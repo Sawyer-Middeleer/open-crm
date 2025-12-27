@@ -149,6 +149,91 @@ export function createServer() {
     }
   );
 
+  server.tool(
+    "records.search",
+    "Search and filter records by field values. Supports filtering by any attribute with operators like equals, contains, greaterThan, etc.",
+    {
+      workspaceId: z.string().describe("Workspace ID"),
+      objectType: z.string().optional().describe("Object type slug to filter by (e.g., 'people', 'deals')"),
+      filters: z
+        .array(
+          z.object({
+            field: z.string().describe("Attribute slug to filter on"),
+            operator: z
+              .enum([
+                "equals",
+                "notEquals",
+                "contains",
+                "notContains",
+                "greaterThan",
+                "lessThan",
+                "greaterThanOrEquals",
+                "lessThanOrEquals",
+                "isEmpty",
+                "isNotEmpty",
+                "in",
+                "notIn",
+              ])
+              .describe("Filter operator"),
+            value: z.any().optional().describe("Value to compare against"),
+          })
+        )
+        .optional()
+        .describe("Array of filters to apply (combined with AND)"),
+      query: z.string().optional().describe("Text search across displayName and text fields"),
+      sortBy: z.string().optional().describe("Attribute slug to sort by, or '_createdAt'"),
+      sortOrder: z.enum(["asc", "desc"]).optional().describe("Sort order (default: asc)"),
+      limit: z.number().optional().describe("Maximum number of records to return (default: 50)"),
+    },
+    async ({ workspaceId, objectType, filters, query, sortBy, sortOrder, limit }) => {
+      const result = await convex.query(api.functions.records.queries.search, {
+        workspaceId,
+        objectTypeSlug: objectType,
+        filters,
+        query,
+        sortBy,
+        sortOrder,
+        limit,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  server.tool(
+    "records.getRelated",
+    "Get all records related to a given record via references or list memberships. Returns outbound references (this record points to), inbound references (other records point to this), and list relationships.",
+    {
+      workspaceId: z.string().describe("Workspace ID"),
+      recordId: z.string().describe("Record ID to get relationships for"),
+      relationship: z
+        .string()
+        .optional()
+        .describe("Filter to specific relationship (attribute slug or list slug)"),
+    },
+    async ({ workspaceId, recordId, relationship }) => {
+      const result = await convex.query(api.functions.records.queries.getRelated, {
+        workspaceId,
+        recordId,
+        relationship,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
   // ============================================================================
   // SCHEMA TOOLS
   // ============================================================================
@@ -368,6 +453,37 @@ export function createServer() {
         recordId,
         parentRecordId,
         actorId,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  // ============================================================================
+  // WORKSPACE TOOLS
+  // ============================================================================
+
+  server.tool(
+    "workspace.create",
+    "Create a new workspace with default object types (People, Companies, Deals)",
+    {
+      name: z.string().describe("Workspace display name"),
+      slug: z.string().describe("URL-safe identifier (must be unique)"),
+      ownerUserId: z.string().describe("External user ID for the owner"),
+      ownerEmail: z.string().describe("Owner's email address"),
+    },
+    async ({ name, slug, ownerUserId, ownerEmail }) => {
+      const result = await convex.mutation(api.functions.workspaces.mutations.create, {
+        name,
+        slug,
+        ownerUserId,
+        ownerEmail,
       });
       return {
         content: [
