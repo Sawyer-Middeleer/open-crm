@@ -6,6 +6,7 @@ import {
   createUnauthorizedResponse,
   type AuthContext,
 } from "./auth/index.js";
+import { getCorsHeaders } from "./lib/validation.js";
 
 // Session TTL configuration
 const SESSION_TTL_MS = 30 * 60 * 1000; // 30 min idle timeout
@@ -25,31 +26,6 @@ const ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || "")
   .split(",")
   .map((o) => o.trim())
   .filter(Boolean);
-
-/**
- * Get CORS headers for a request origin
- */
-function getCorsHeaders(origin: string | null): Record<string, string> {
-  const headers: Record<string, string> = {
-    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers":
-      "Content-Type, Authorization, X-API-Key, X-Workspace-Id, Mcp-Session-Id",
-    "Access-Control-Max-Age": "86400",
-  };
-
-  // If no allowed origins configured, block cross-origin (safe default)
-  if (ALLOWED_ORIGINS.length === 0) {
-    return headers;
-  }
-
-  // Check if origin is in allowlist
-  if (origin && ALLOWED_ORIGINS.includes(origin)) {
-    headers["Access-Control-Allow-Origin"] = origin;
-    headers["Access-Control-Allow-Credentials"] = "true";
-  }
-
-  return headers;
-}
 
 /**
  * Handle OAuth protected resource metadata endpoint
@@ -159,7 +135,7 @@ export async function startHttpServer(): Promise<void> {
         const origin = request.headers.get("origin");
         return new Response(null, {
           status: 204,
-          headers: getCorsHeaders(origin),
+          headers: getCorsHeaders(origin, ALLOWED_ORIGINS),
         });
       }
 
@@ -226,7 +202,7 @@ export async function startHttpServer(): Promise<void> {
 
           // Add CORS headers to response
           const origin = request.headers.get("origin");
-          const corsHeaderValues = getCorsHeaders(origin);
+          const corsHeaderValues = getCorsHeaders(origin, ALLOWED_ORIGINS);
           const responseHeaders = new Headers(response.headers);
           for (const [key, value] of Object.entries(corsHeaderValues)) {
             responseHeaders.set(key, value);

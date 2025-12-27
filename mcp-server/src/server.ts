@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getConvexClient } from "./convex/client.js";
 import { api } from "../../convex/_generated/api.js";
 import type { Id } from "../../convex/_generated/dataModel.js";
+import { validateUrl } from "./lib/validation.js";
 
 export type McpServerWrapper = ReturnType<typeof createServer>;
 
@@ -43,52 +44,6 @@ function getAuthContext(extra: unknown): AuthContextFromExtra {
     email: data.email as string | undefined,
     provider: data.provider as string | undefined,
   };
-}
-
-/**
- * Validate URL to prevent SSRF attacks
- * Blocks private IPs, localhost, and cloud metadata services
- */
-function validateUrl(url: string): { valid: boolean; error?: string } {
-  try {
-    const parsed = new URL(url);
-
-    // Only allow http/https
-    if (!["http:", "https:"].includes(parsed.protocol)) {
-      return { valid: false, error: "Only HTTP(S) protocols allowed" };
-    }
-
-    // Block private IPs and localhost
-    const host = parsed.hostname.toLowerCase();
-    const privatePatterns = [
-      /^127\./, // 127.0.0.0/8 (localhost)
-      /^10\./, // 10.0.0.0/8
-      /^172\.(1[6-9]|2\d|3[01])\./, // 172.16.0.0/12
-      /^192\.168\./, // 192.168.0.0/16
-      /^0\.0\.0\.0/, // 0.0.0.0
-      /^169\.254\./, // Link-local / AWS metadata
-      /^localhost$/,
-      /^::1$/,
-      /^\[::1\]$/,
-    ];
-
-    if (privatePatterns.some((p) => p.test(host))) {
-      return { valid: false, error: "Private addresses not allowed" };
-    }
-
-    // Block cloud metadata services
-    const metadataHosts = [
-      "metadata.google.internal",
-      "metadata.tencentyun.com",
-    ];
-    if (metadataHosts.includes(host)) {
-      return { valid: false, error: "Metadata service access blocked" };
-    }
-
-    return { valid: true };
-  } catch {
-    return { valid: false, error: "Invalid URL format" };
-  }
 }
 
 export function createServer() {

@@ -1,22 +1,6 @@
 import type { AuthProvider, AuthContext, AuthRequest } from "./types.js";
 import { AuthError } from "./errors.js";
-
-/**
- * Check if error indicates provider is unavailable (network issue)
- */
-function isNetworkError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const msg = error.message.toLowerCase();
-  return (
-    msg.includes("econnrefused") ||
-    msg.includes("enotfound") ||
-    msg.includes("etimedout") ||
-    msg.includes("timeout") ||
-    msg.includes("fetch failed") ||
-    msg.includes("network") ||
-    msg.includes("unreachable")
-  );
-}
+import { isNetworkError } from "../lib/validation.js";
 
 export interface AuthManagerConfig {
   providers: AuthProvider[];
