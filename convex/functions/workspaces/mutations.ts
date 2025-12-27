@@ -50,7 +50,7 @@ export const create = mutation({
 });
 
 async function seedSystemObjectTypes(
-  ctx: Parameters<Parameters<typeof mutation>[0]["handler"]>[0],
+  ctx: any,
   workspaceId: string,
   memberId: string
 ) {

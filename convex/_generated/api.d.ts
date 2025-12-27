@@ -20,6 +20,7 @@ import type * as functions_records_mutations from "../functions/records/mutation
 import type * as functions_records_queries from "../functions/records/queries.js";
 import type * as functions_workspaces_mutations from "../functions/workspaces/mutations.js";
 import type * as functions_workspaces_queries from "../functions/workspaces/queries.js";
+import type * as lib_actionContext from "../lib/actionContext.js";
 import type * as lib_audit from "../lib/audit.js";
 
 import type {
@@ -41,6 +42,7 @@ declare const fullApi: ApiFromModules<{
   "functions/records/queries": typeof functions_records_queries;
   "functions/workspaces/mutations": typeof functions_workspaces_mutations;
   "functions/workspaces/queries": typeof functions_workspaces_queries;
+  "lib/actionContext": typeof lib_actionContext;
   "lib/audit": typeof lib_audit;
 }>;
 

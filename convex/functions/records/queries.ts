@@ -312,7 +312,7 @@ export const getRelated = query({
 
     // Helper to get object type info
     const getObjectTypeInfo = async (objectTypeId: string) => {
-      const ot = await ctx.db.get(objectTypeId as never);
+      const ot = await ctx.db.get(objectTypeId as never) as { name: string; slug: string } | null;
       return ot ? { name: ot.name, slug: ot.slug } : null;
     };
 
@@ -323,7 +323,7 @@ export const getRelated = query({
 
       const refId = (record.data as Record<string, unknown>)[attr.slug] as string | undefined;
       if (refId) {
-        const refRecord = await ctx.db.get(refId as never);
+        const refRecord = await ctx.db.get(refId as never) as { _id: string; displayName?: string; data: unknown; objectTypeId: string } | null;
         if (refRecord) {
           relationships.push({
             type: "reference",
@@ -332,7 +332,7 @@ export const getRelated = query({
             records: [
               {
                 _id: refRecord._id,
-                displayName: refRecord.displayName,
+                displayName: refRecord.displayName ?? null,
                 data: refRecord.data as Record<string, unknown>,
                 objectType: await getObjectTypeInfo(refRecord.objectTypeId),
               },
@@ -373,7 +373,7 @@ export const getRelated = query({
           records: await Promise.all(
             matching.map(async (r) => ({
               _id: r._id,
-              displayName: r.displayName,
+              displayName: r.displayName ?? null,
               data: r.data as Record<string, unknown>,
               objectType: await getObjectTypeInfo(r.objectTypeId),
             }))
@@ -402,11 +402,11 @@ export const getRelated = query({
       if (entries.length > 0) {
         const entryRecords = await Promise.all(
           entries.map(async (e) => {
-            const entryRecord = await ctx.db.get(e.recordId);
+            const entryRecord = await ctx.db.get(e.recordId) as { _id: string; displayName?: string; data: unknown; objectTypeId: string } | null;
             if (!entryRecord) return null;
             return {
               _id: entryRecord._id,
-              displayName: entryRecord.displayName,
+              displayName: entryRecord.displayName ?? null,
               data: entryRecord.data as Record<string, unknown>,
               objectType: await getObjectTypeInfo(entryRecord.objectTypeId),
               listEntryData: e.data as Record<string, unknown>,
@@ -433,14 +433,14 @@ export const getRelated = query({
       if (!list || (args.relationship && args.relationship !== list.slug)) continue;
 
       if (entry.parentRecordId) {
-        const parentRecord = await ctx.db.get(entry.parentRecordId);
+        const parentRecord = await ctx.db.get(entry.parentRecordId) as { _id: string; displayName?: string; data: unknown; objectTypeId: string } | null;
         if (parentRecord) {
           const existing = relationships.find(
             (r) => r.type === "list" && r.slug === list.slug && r.direction === "inbound"
           );
           const parentData = {
             _id: parentRecord._id,
-            displayName: parentRecord.displayName,
+            displayName: parentRecord.displayName ?? null,
             data: parentRecord.data as Record<string, unknown>,
             objectType: await getObjectTypeInfo(parentRecord.objectTypeId),
             listEntryData: entry.data as Record<string, unknown>,

@@ -313,21 +313,25 @@ const auditLogs = defineTable({
 // ============================================================================
 
 const actionStepTypeValidator = v.union(
+  // Field operations
   v.literal("updateField"),
   v.literal("clearField"),
   v.literal("copyField"),
   v.literal("transformField"),
+  // Record operations
   v.literal("createRecord"),
   v.literal("deleteRecord"),
   v.literal("archiveRecord"),
+  // List operations
   v.literal("addToList"),
   v.literal("removeFromList"),
   v.literal("updateListEntry"),
+  // External
   v.literal("sendWebhook"),
-  v.literal("sendEmail"),
+  // Control flow
   v.literal("condition"),
-  v.literal("delay"),
   v.literal("loop"),
+  // Meta
   v.literal("callMcpTool")
 );
 

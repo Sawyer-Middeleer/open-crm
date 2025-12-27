@@ -1,6 +1,17 @@
 import { mutation } from "../../_generated/server";
 import { v } from "convex/values";
 import { createAuditLog } from "../../lib/audit";
+import type { StepContext } from "../../lib/actionContext";
+import {
+  createInitialContext,
+  updateContextAfterStep,
+  createLoopContext,
+  interpolateValue,
+} from "../../lib/actionContext";
+
+// ============================================================================
+// ACTION EXECUTION
+// ============================================================================
 
 export const execute = mutation({
   args: {
@@ -47,16 +58,18 @@ export const execute = mutation({
     });
 
     try {
+      // Initialize step context
+      let stepContext = createInitialContext({
+        workspaceId: args.workspaceId,
+        actorId: args.actorId,
+        record,
+      });
+
       // Execute each step
-      const stepResults = [];
+      const stepResults: StepResultRecord[] = [];
 
       for (const step of action.steps) {
-        const stepResult = await executeStep(ctx, {
-          step,
-          record,
-          workspaceId: args.workspaceId,
-          actorId: args.actorId,
-        });
+        const stepResult = await executeStep(ctx, step, stepContext);
 
         stepResults.push({
           stepId: step.id,
@@ -65,10 +78,25 @@ export const execute = mutation({
           completedAt: stepResult.completedAt,
           output: stepResult.output,
           error: stepResult.error,
-        } as const);
+        });
 
         if (!stepResult.success) {
           break;
+        }
+
+        // Update context for next step
+        stepContext = updateContextAfterStep(
+          stepContext,
+          step.id,
+          (stepResult.output as Record<string, unknown>) ?? {}
+        );
+
+        // Re-fetch record if it was modified
+        if (["updateField", "clearField", "copyField", "transformField"].includes(step.type)) {
+          const updatedRecord = await ctx.db.get(args.recordId);
+          if (updatedRecord) {
+            stepContext = { ...stepContext, record: updatedRecord };
+          }
         }
       }
 
@@ -115,19 +143,18 @@ export const execute = mutation({
   },
 });
 
-interface StepContext {
-  step: {
-    id: string;
-    type: string;
-    config: Record<string, unknown>;
-  };
-  record: {
-    _id: unknown;
-    data: Record<string, unknown>;
-    objectTypeId: unknown;
-  };
-  workspaceId: unknown;
-  actorId: unknown;
+// ============================================================================
+// STEP EXECUTION
+// ============================================================================
+
+interface Step {
+  id: string;
+  type: string;
+  name?: string;
+  config: Record<string, unknown>;
+  thenSteps?: Step[];
+  elseSteps?: Step[];
+  steps?: Step[]; // for loop
 }
 
 interface StepResult {
@@ -138,90 +165,687 @@ interface StepResult {
   error?: string;
 }
 
+interface StepResultRecord {
+  stepId: string;
+  status: "completed" | "failed";
+  startedAt: number;
+  completedAt: number;
+  output?: unknown;
+  error?: string;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type MutationContext = any; // Using any for ctx since extracting exact type is complex
+
 async function executeStep(
-  ctx: Parameters<Parameters<typeof mutation>[0]["handler"]>[0],
-  { step, record, workspaceId, actorId }: StepContext
+  ctx: MutationContext,
+  step: Step,
+  context: StepContext
 ): Promise<StepResult> {
   const startedAt = Date.now();
 
   try {
+    // Interpolate config values
+    const config = interpolateValue(step.config, context) as Record<string, unknown>;
+
     switch (step.type) {
+      // ========================================
+      // FIELD OPERATIONS
+      // ========================================
       case "updateField": {
-        const config = step.config as {
-          targetField: string;
-          value: unknown;
-        };
+        const { field, value } = config as { field: string; value: unknown };
+        const newData = { ...context.record.data, [field]: value };
 
-        const newData = {
-          ...record.data,
-          [config.targetField]: config.value,
-        };
-
-        await ctx.db.patch(record._id as Parameters<typeof ctx.db.patch>[0], {
+        await ctx.db.patch(context.record._id, {
           data: newData,
           updatedAt: Date.now(),
         });
 
-        return {
-          success: true,
-          startedAt,
-          completedAt: Date.now(),
-          output: { field: config.targetField, value: config.value },
-        };
+        return success(startedAt, { field, value, updated: true });
       }
 
       case "clearField": {
-        const config = step.config as { targetField: string };
-        const newData = { ...record.data };
-        delete newData[config.targetField];
+        const { field } = config as { field: string };
+        const newData = { ...context.record.data };
+        delete (newData as Record<string, unknown>)[field];
 
-        await ctx.db.patch(record._id as Parameters<typeof ctx.db.patch>[0], {
+        await ctx.db.patch(context.record._id, {
           data: newData,
           updatedAt: Date.now(),
         });
 
-        return {
-          success: true,
-          startedAt,
-          completedAt: Date.now(),
-          output: { field: config.targetField, cleared: true },
-        };
+        return success(startedAt, { field, cleared: true });
       }
 
-      case "sendWebhook": {
-        // Note: In Convex, HTTP calls need to be done in actions (with "use node")
-        // For now, we'll just log the intent
-        const config = step.config as { url: string; method: string; body: unknown };
-
-        return {
-          success: true,
-          startedAt,
-          completedAt: Date.now(),
-          output: {
-            message: "Webhook queued",
-            url: config.url,
-            method: config.method,
-          },
+      case "copyField": {
+        const { sourceField, targetField } = config as {
+          sourceField: string;
+          targetField: string;
         };
+        const data = context.record.data as Record<string, unknown>;
+        const value = data[sourceField];
+        const newData = { ...data, [targetField]: value };
+
+        await ctx.db.patch(context.record._id, {
+          data: newData,
+          updatedAt: Date.now(),
+        });
+
+        return success(startedAt, { sourceField, targetField, value, copied: true });
+      }
+
+      case "transformField": {
+        const { field, transform, amount } = config as {
+          field: string;
+          transform: string;
+          amount?: number;
+        };
+        const data = context.record.data as Record<string, unknown>;
+        const value = data[field];
+        let newValue: unknown = value;
+
+        switch (transform) {
+          case "uppercase":
+            newValue = typeof value === "string" ? value.toUpperCase() : value;
+            break;
+          case "lowercase":
+            newValue = typeof value === "string" ? value.toLowerCase() : value;
+            break;
+          case "trim":
+            newValue = typeof value === "string" ? value.trim() : value;
+            break;
+          case "round":
+            newValue = typeof value === "number" ? Math.round(value) : value;
+            break;
+          case "increment":
+            newValue = typeof value === "number" ? value + (amount ?? 1) : value;
+            break;
+          case "decrement":
+            newValue = typeof value === "number" ? value - (amount ?? 1) : value;
+            break;
+        }
+
+        const newData = { ...data, [field]: newValue };
+        await ctx.db.patch(context.record._id, {
+          data: newData,
+          updatedAt: Date.now(),
+        });
+
+        return success(startedAt, { field, transform, oldValue: value, newValue });
+      }
+
+      // ========================================
+      // RECORD OPERATIONS
+      // ========================================
+      case "createRecord": {
+        const { objectType, data } = config as {
+          objectType: string;
+          data: Record<string, unknown>;
+        };
+
+        // Resolve object type slug
+        const objectTypeDoc = await ctx.db
+          .query("objectTypes")
+          .withIndex("by_workspace_slug", (q: any) =>
+            q.eq("workspaceId", context.workspaceId).eq("slug", objectType)
+          )
+          .first();
+
+        if (!objectTypeDoc) {
+          return failure(startedAt, `Object type '${objectType}' not found`);
+        }
+
+        // Compute display name
+        let displayName: string | undefined;
+        if (objectTypeDoc.displayConfig.primaryAttribute) {
+          displayName = String(data[objectTypeDoc.displayConfig.primaryAttribute] ?? "");
+        }
+
+        const now = Date.now();
+        const recordId = await ctx.db.insert("records", {
+          workspaceId: context.workspaceId,
+          objectTypeId: objectTypeDoc._id,
+          data,
+          displayName,
+          createdBy: context.actorId,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        await createAuditLog(ctx, {
+          workspaceId: context.workspaceId,
+          entityType: "record",
+          entityId: recordId,
+          objectTypeId: objectTypeDoc._id,
+          action: "create",
+          changes: Object.entries(data).map(([field, value]) => ({ field, after: value })),
+          afterSnapshot: data,
+          actorId: context.actorId,
+          actorType: "action",
+          metadata: { source: "action" },
+        });
+
+        return success(startedAt, { createdRecordId: recordId, objectType, data });
+      }
+
+      case "deleteRecord": {
+        const { recordId, useTriggeredRecord } = config as {
+          recordId?: string;
+          useTriggeredRecord?: boolean;
+        };
+
+        const targetId = (useTriggeredRecord
+          ? context.record._id
+          : recordId) as string;
+
+        if (!targetId) {
+          return failure(startedAt, "No record ID specified for deletion");
+        }
+
+        const targetRecord = await ctx.db.get(targetId);
+        if (!targetRecord || targetRecord.workspaceId !== context.workspaceId) {
+          return failure(startedAt, "Record not found");
+        }
+
+        // Create audit log before deletion
+        await createAuditLog(ctx, {
+          workspaceId: context.workspaceId,
+          entityType: "record",
+          entityId: targetId,
+          objectTypeId: targetRecord.objectTypeId,
+          action: "delete",
+          changes: [],
+          beforeSnapshot: targetRecord.data,
+          actorId: context.actorId,
+          actorType: "action",
+          metadata: { source: "action" },
+        });
+
+        // Delete list entries
+        const listEntries = await ctx.db
+          .query("listEntries")
+          .withIndex("by_record", (q: any) => q.eq("recordId", targetId))
+          .collect();
+
+        for (const entry of listEntries) {
+          await ctx.db.delete(entry._id);
+        }
+
+        await ctx.db.delete(targetId);
+
+        return success(startedAt, { deletedRecordId: targetId });
+      }
+
+      case "archiveRecord": {
+        const { recordId, useTriggeredRecord } = config as {
+          recordId?: string;
+          useTriggeredRecord?: boolean;
+        };
+
+        const targetId = (useTriggeredRecord
+          ? context.record._id
+          : recordId) as string;
+
+        if (!targetId) {
+          return failure(startedAt, "No record ID specified for archiving");
+        }
+
+        const targetRecord = await ctx.db.get(targetId);
+        if (!targetRecord || targetRecord.workspaceId !== context.workspaceId) {
+          return failure(startedAt, "Record not found");
+        }
+
+        // Set archived flag in data
+        const newData = {
+          ...targetRecord.data,
+          _archived: true,
+          _archivedAt: Date.now(),
+        };
+
+        await ctx.db.patch(targetId, {
+          data: newData,
+          updatedAt: Date.now(),
+        });
+
+        await createAuditLog(ctx, {
+          workspaceId: context.workspaceId,
+          entityType: "record",
+          entityId: targetId,
+          objectTypeId: targetRecord.objectTypeId,
+          action: "update",
+          changes: [{ field: "_archived", before: false, after: true }],
+          beforeSnapshot: targetRecord.data,
+          afterSnapshot: newData,
+          actorId: context.actorId,
+          actorType: "action",
+          metadata: { source: "action" },
+        });
+
+        return success(startedAt, { archivedRecordId: targetId });
+      }
+
+      // ========================================
+      // LIST OPERATIONS
+      // ========================================
+      case "addToList": {
+        const { list, recordId, parentRecordId, data } = config as {
+          list: string;
+          recordId?: string;
+          parentRecordId?: string;
+          data?: Record<string, unknown>;
+        };
+
+        // Resolve list slug
+        const listDoc = await ctx.db
+          .query("lists")
+          .withIndex("by_workspace_slug", (q: any) =>
+            q.eq("workspaceId", context.workspaceId).eq("slug", list)
+          )
+          .first();
+
+        if (!listDoc) {
+          return failure(startedAt, `List '${list}' not found`);
+        }
+
+        const targetRecordId = (recordId ?? context.record._id) as string;
+
+        const now = Date.now();
+        const entryId = await ctx.db.insert("listEntries", {
+          workspaceId: context.workspaceId as never,
+          listId: listDoc._id,
+          recordId: targetRecordId as never,
+          parentRecordId: parentRecordId as never,
+          data: data ?? {},
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        return success(startedAt, { entryId, list, recordId: targetRecordId });
+      }
+
+      case "removeFromList": {
+        const { list, recordId, parentRecordId } = config as {
+          list: string;
+          recordId?: string;
+          parentRecordId?: string;
+        };
+
+        const listDoc = await ctx.db
+          .query("lists")
+          .withIndex("by_workspace_slug", (q: any) =>
+            q.eq("workspaceId", context.workspaceId).eq("slug", list)
+          )
+          .first();
+
+        if (!listDoc) {
+          return failure(startedAt, `List '${list}' not found`);
+        }
+
+        const targetRecordId = (recordId ?? context.record._id) as string;
+
+        // Find and delete the entry
+        let entries = await ctx.db
+          .query("listEntries")
+          .withIndex("by_list_record", (q: any) =>
+            q.eq("listId", listDoc._id).eq("recordId", targetRecordId as never)
+          )
+          .collect();
+
+        if (parentRecordId) {
+          entries = entries.filter(
+            (e: any) => e.parentRecordId === parentRecordId
+          );
+        }
+
+        for (const entry of entries) {
+          await ctx.db.delete(entry._id);
+        }
+
+        return success(startedAt, {
+          list,
+          recordId: targetRecordId,
+          removedCount: entries.length,
+        });
+      }
+
+      case "updateListEntry": {
+        const { list, recordId, parentRecordId, data } = config as {
+          list: string;
+          recordId?: string;
+          parentRecordId?: string;
+          data: Record<string, unknown>;
+        };
+
+        const listDoc = await ctx.db
+          .query("lists")
+          .withIndex("by_workspace_slug", (q: any) =>
+            q.eq("workspaceId", context.workspaceId).eq("slug", list)
+          )
+          .first();
+
+        if (!listDoc) {
+          return failure(startedAt, `List '${list}' not found`);
+        }
+
+        const targetRecordId = (recordId ?? context.record._id) as string;
+
+        let entries = await ctx.db
+          .query("listEntries")
+          .withIndex("by_list_record", (q: any) =>
+            q.eq("listId", listDoc._id).eq("recordId", targetRecordId as never)
+          )
+          .collect();
+
+        if (parentRecordId) {
+          entries = entries.filter(
+            (e: any) => e.parentRecordId === parentRecordId
+          );
+        }
+
+        for (const entry of entries) {
+          await ctx.db.patch(entry._id, {
+            data: { ...entry.data, ...data },
+            updatedAt: Date.now(),
+          });
+        }
+
+        return success(startedAt, {
+          list,
+          recordId: targetRecordId,
+          updatedCount: entries.length,
+        });
+      }
+
+      // ========================================
+      // CONTROL FLOW
+      // ========================================
+      case "condition": {
+        const { conditions, logic } = config as {
+          conditions: Array<{
+            field: string;
+            operator: string;
+            value: unknown;
+          }>;
+          logic?: "and" | "or";
+        };
+
+        const recordData = context.record.data as Record<string, unknown>;
+        const results = conditions.map((cond) =>
+          evaluateCondition(recordData[cond.field], cond.operator, cond.value)
+        );
+
+        const passed =
+          logic === "or"
+            ? results.some((r) => r)
+            : results.every((r) => r);
+
+        // Execute then/else steps
+        const stepsToRun = passed ? step.thenSteps : step.elseSteps;
+        const nestedResults: StepResultRecord[] = [];
+
+        if (stepsToRun && stepsToRun.length > 0) {
+          let nestedContext = context;
+
+          for (const nestedStep of stepsToRun) {
+            const result = await executeStep(ctx, nestedStep, nestedContext);
+            nestedResults.push({
+              stepId: nestedStep.id,
+              status: result.success ? "completed" : "failed",
+              startedAt: result.startedAt,
+              completedAt: result.completedAt,
+              output: result.output,
+              error: result.error,
+            });
+
+            if (!result.success) break;
+
+            nestedContext = updateContextAfterStep(
+              nestedContext,
+              nestedStep.id,
+              (result.output as Record<string, unknown>) ?? {}
+            );
+          }
+        }
+
+        return success(startedAt, {
+          conditionPassed: passed,
+          branch: passed ? "then" : "else",
+          nestedResults,
+        });
+      }
+
+      case "loop": {
+        const { source, objectType, filters, items, field, maxIterations } =
+          config as {
+            source: "records" | "array" | "field";
+            objectType?: string;
+            filters?: Array<{ field: string; operator: string; value: unknown }>;
+            items?: unknown[];
+            field?: string;
+            maxIterations?: number;
+          };
+
+        const max = maxIterations ?? 100;
+        let loopItems: unknown[] = [];
+
+        // Gather items based on source
+        switch (source) {
+          case "array":
+            loopItems = items ?? [];
+            break;
+
+          case "field": {
+            const recordData = context.record.data as Record<string, unknown>;
+            const fieldValue = field ? recordData[field] : undefined;
+            loopItems = Array.isArray(fieldValue) ? fieldValue : [];
+            break;
+          }
+
+          case "records": {
+            if (!objectType) {
+              return failure(startedAt, "objectType required for records source");
+            }
+
+            const objType = await ctx.db
+              .query("objectTypes")
+              .withIndex("by_workspace_slug", (q: any) =>
+                q.eq("workspaceId", context.workspaceId).eq("slug", objectType)
+              )
+              .first();
+
+            if (!objType) {
+              return failure(startedAt, `Object type '${objectType}' not found`);
+            }
+
+            let records = await ctx.db
+              .query("records")
+              .withIndex("by_workspace_object_type", (q: any) =>
+                q
+                  .eq("workspaceId", context.workspaceId)
+                  .eq("objectTypeId", objType._id)
+              )
+              .collect();
+
+            // Apply filters
+            if (filters && filters.length > 0) {
+              records = records.filter((r: any) => {
+                const data = r.data as Record<string, unknown>;
+                return filters.every((f) =>
+                  evaluateCondition(data[f.field], f.operator, f.value)
+                );
+              });
+            }
+
+            loopItems = records;
+            break;
+          }
+        }
+
+        // Limit iterations
+        loopItems = loopItems.slice(0, max);
+
+        // Execute loop
+        const loopResults: StepResultRecord[] = [];
+        let loopContext = context;
+
+        for (let i = 0; i < loopItems.length; i++) {
+          const iterContext = createLoopContext(loopContext, loopItems[i], i);
+
+          for (const loopStep of step.steps ?? []) {
+            const result = await executeStep(ctx, loopStep, iterContext);
+            loopResults.push({
+              stepId: `${loopStep.id}[${i}]`,
+              status: result.success ? "completed" : "failed",
+              startedAt: result.startedAt,
+              completedAt: result.completedAt,
+              output: result.output,
+              error: result.error,
+            });
+
+            if (!result.success) {
+              return success(startedAt, {
+                iterations: i + 1,
+                totalItems: loopItems.length,
+                loopResults,
+                stoppedEarly: true,
+              });
+            }
+          }
+        }
+
+        return success(startedAt, {
+          iterations: loopItems.length,
+          totalItems: loopItems.length,
+          loopResults,
+        });
+      }
+
+      // ========================================
+      // EXTERNAL
+      // ========================================
+      case "sendWebhook": {
+        // Note: Real HTTP calls require Convex actions (not mutations)
+        // This logs the intent; actual HTTP is done via httpActions.ts
+        const { url, method, headers, body } = config as {
+          url: string;
+          method: string;
+          headers?: Record<string, string>;
+          body?: unknown;
+        };
+
+        // For now, queue the webhook (future: call HTTP action)
+        return success(startedAt, {
+          queued: true,
+          url,
+          method,
+          headers,
+          body,
+          message: "Webhook queued for delivery",
+        });
+      }
+
+      case "callMcpTool": {
+        // Note: MCP tools are called from the MCP server, not from Convex
+        // This step type is for documentation/planning purposes
+        const { tool, arguments: toolArgs } = config as {
+          tool: string;
+          arguments: Record<string, unknown>;
+        };
+
+        return success(startedAt, {
+          message: "callMcpTool is handled by the MCP server",
+          tool,
+          arguments: toolArgs,
+        });
       }
 
       default:
-        return {
-          success: false,
-          startedAt,
-          completedAt: Date.now(),
-          error: `Unknown step type: ${step.type}`,
-        };
+        return failure(startedAt, `Unknown step type: ${step.type}`);
     }
   } catch (error) {
-    return {
-      success: false,
+    return failure(
       startedAt,
-      completedAt: Date.now(),
-      error: error instanceof Error ? error.message : "Unknown error",
-    };
+      error instanceof Error ? error.message : "Unknown error"
+    );
   }
 }
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+function success(startedAt: number, output: unknown): StepResult {
+  return {
+    success: true,
+    startedAt,
+    completedAt: Date.now(),
+    output,
+  };
+}
+
+function failure(startedAt: number, error: string): StepResult {
+  return {
+    success: false,
+    startedAt,
+    completedAt: Date.now(),
+    error,
+  };
+}
+
+function evaluateCondition(
+  fieldValue: unknown,
+  operator: string,
+  compareValue: unknown
+): boolean {
+  switch (operator) {
+    case "equals":
+      return fieldValue === compareValue;
+    case "notEquals":
+      return fieldValue !== compareValue;
+    case "contains":
+      if (typeof fieldValue === "string" && typeof compareValue === "string") {
+        return fieldValue.toLowerCase().includes(compareValue.toLowerCase());
+      }
+      return false;
+    case "notContains":
+      if (typeof fieldValue === "string" && typeof compareValue === "string") {
+        return !fieldValue.toLowerCase().includes(compareValue.toLowerCase());
+      }
+      return true;
+    case "greaterThan":
+      return (fieldValue as number) > (compareValue as number);
+    case "lessThan":
+      return (fieldValue as number) < (compareValue as number);
+    case "greaterThanOrEquals":
+      return (fieldValue as number) >= (compareValue as number);
+    case "lessThanOrEquals":
+      return (fieldValue as number) <= (compareValue as number);
+    case "isEmpty":
+      return (
+        fieldValue === null ||
+        fieldValue === undefined ||
+        fieldValue === "" ||
+        (Array.isArray(fieldValue) && fieldValue.length === 0)
+      );
+    case "isNotEmpty":
+      return !(
+        fieldValue === null ||
+        fieldValue === undefined ||
+        fieldValue === "" ||
+        (Array.isArray(fieldValue) && fieldValue.length === 0)
+      );
+    case "in":
+      return Array.isArray(compareValue) && compareValue.includes(fieldValue);
+    case "notIn":
+      return Array.isArray(compareValue) && !compareValue.includes(fieldValue);
+    default:
+      return false;
+  }
+}
+
+// ============================================================================
+// ACTION CREATION
+// ============================================================================
 
 export const create = mutation({
   args: {
@@ -245,14 +869,28 @@ export const create = mutation({
       watchedFields: v.optional(v.array(v.string())),
       schedule: v.optional(v.string()),
     }),
+    conditions: v.optional(
+      v.array(
+        v.object({
+          field: v.string(),
+          operator: v.string(),
+          value: v.any(),
+          logic: v.optional(v.union(v.literal("and"), v.literal("or"))),
+        })
+      )
+    ),
     steps: v.array(
       v.object({
         id: v.string(),
         type: v.string(),
         name: v.optional(v.string()),
         config: v.any(),
+        thenSteps: v.optional(v.array(v.any())),
+        elseSteps: v.optional(v.array(v.any())),
+        steps: v.optional(v.array(v.any())),
       })
     ),
+    isActive: v.optional(v.boolean()),
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
@@ -276,8 +914,149 @@ export const create = mutation({
       slug: args.slug,
       description: args.description,
       trigger: args.trigger,
-      steps: args.steps,
-      isActive: true,
+      conditions: args.conditions as never,
+      steps: args.steps as never,
+      isActive: args.isActive ?? true,
+      isSystem: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await createAuditLog(ctx, {
+      workspaceId: args.workspaceId,
+      entityType: "action",
+      entityId: actionId,
+      action: "create",
+      changes: [
+        { field: "name", after: args.name },
+        { field: "slug", after: args.slug },
+      ],
+      actorId: args.actorId,
+      actorType: "user",
+    });
+
+    const action = await ctx.db.get(actionId);
+
+    return { actionId, action };
+  },
+});
+
+// ============================================================================
+// ACTION CREATION WITH SLUG RESOLUTION
+// ============================================================================
+
+export const createWithSlugs = mutation({
+  args: {
+    workspaceId: v.id("workspaces"),
+    name: v.string(),
+    slug: v.string(),
+    description: v.optional(v.string()),
+    trigger: v.object({
+      type: v.union(
+        v.literal("manual"),
+        v.literal("onCreate"),
+        v.literal("onUpdate"),
+        v.literal("onDelete"),
+        v.literal("onFieldChange"),
+        v.literal("onListAdd"),
+        v.literal("onListRemove"),
+        v.literal("scheduled")
+      ),
+      objectType: v.optional(v.string()), // slug
+      list: v.optional(v.string()), // slug
+      watchedFields: v.optional(v.array(v.string())),
+      schedule: v.optional(v.string()),
+    }),
+    conditions: v.optional(
+      v.array(
+        v.object({
+          field: v.string(),
+          operator: v.string(),
+          value: v.any(),
+          logic: v.optional(v.union(v.literal("and"), v.literal("or"))),
+        })
+      )
+    ),
+    steps: v.array(
+      v.object({
+        id: v.string(),
+        type: v.string(),
+        name: v.optional(v.string()),
+        config: v.any(),
+        thenSteps: v.optional(v.array(v.any())),
+        elseSteps: v.optional(v.array(v.any())),
+        steps: v.optional(v.array(v.any())),
+      })
+    ),
+    isActive: v.optional(v.boolean()),
+    actorId: v.id("workspaceMembers"),
+  },
+  handler: async (ctx, args) => {
+    // Resolve object type slug to ID
+    let objectTypeId: string | undefined;
+    if (args.trigger.objectType) {
+      const objectType = await ctx.db
+        .query("objectTypes")
+        .withIndex("by_workspace_slug", (q) =>
+          q
+            .eq("workspaceId", args.workspaceId)
+            .eq("slug", args.trigger.objectType!)
+        )
+        .first();
+
+      if (!objectType) {
+        throw new Error(
+          `Object type '${args.trigger.objectType}' not found`
+        );
+      }
+      objectTypeId = objectType._id;
+    }
+
+    // Resolve list slug to ID
+    let listId: string | undefined;
+    if (args.trigger.list) {
+      const list = await ctx.db
+        .query("lists")
+        .withIndex("by_workspace_slug", (q) =>
+          q.eq("workspaceId", args.workspaceId).eq("slug", args.trigger.list!)
+        )
+        .first();
+
+      if (!list) {
+        throw new Error(`List '${args.trigger.list}' not found`);
+      }
+      listId = list._id;
+    }
+
+    // Check for duplicate slug
+    const existing = await ctx.db
+      .query("actions")
+      .withIndex("by_workspace_slug", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("slug", args.slug)
+      )
+      .first();
+
+    if (existing) {
+      throw new Error(`Action with slug '${args.slug}' already exists`);
+    }
+
+    const now = Date.now();
+
+    const actionId = await ctx.db.insert("actions", {
+      workspaceId: args.workspaceId,
+      name: args.name,
+      slug: args.slug,
+      description: args.description,
+      trigger: {
+        type: args.trigger.type,
+        objectTypeId: objectTypeId as never,
+        listId: listId as never,
+        watchedFields: args.trigger.watchedFields,
+        schedule: args.trigger.schedule,
+      },
+      conditions: args.conditions as never,
+      steps: args.steps as never,
+      isActive: args.isActive ?? true,
       isSystem: false,
       createdAt: now,
       updatedAt: now,

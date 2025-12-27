@@ -1,4 +1,4 @@
-import { GenericMutationCtx, GenericDataModel } from "convex/server";
+import type { GenericMutationCtx, GenericDataModel } from "convex/server";
 
 type EntityType =
   | "record"

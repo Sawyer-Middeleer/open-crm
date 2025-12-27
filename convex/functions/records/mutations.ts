@@ -300,7 +300,7 @@ function validateRecord(
           const validValues = attr.config.options.map(
             (o: { value: string }) => o.value
           );
-          if (!validValues.includes(value)) {
+          if (!validValues.includes(value as string)) {
             errors.push({
               type: "invalidFormat",
               field: attr.slug,

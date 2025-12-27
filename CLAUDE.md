@@ -62,9 +62,18 @@ bun run build            # Deploys to Convex production
 
 **Audit Trail**: Every mutation logs to `auditLogs` with before/after snapshots, actor, and timestamp.
 
-**Actions**: Composable automations using predefined step types (updateField, sendWebhook, condition, etc.). No user code execution.
+**Actions**: Composable automations using predefined step types. No user code execution.
 
-### MCP Tools (22 total)
+Step types:
+- **Field ops**: `updateField`, `clearField`, `copyField`, `transformField`
+- **Record ops**: `createRecord`, `deleteRecord`, `archiveRecord`
+- **List ops**: `addToList`, `removeFromList`, `updateListEntry`
+- **Control flow**: `condition` (if/else branches), `loop` (iterate over records/arrays)
+- **External**: `sendWebhook`, `callMcpTool`
+
+Variable interpolation: `{{record.field}}`, `{{previous.output}}`, `{{loopItem}}`, `{{loopIndex}}`
+
+### MCP Tools (23 total)
 
 Record operations:
 - `records.create`, `records.get`, `records.list`, `records.update`, `records.delete`
@@ -88,6 +97,7 @@ Workspace:
 - `workspace.create` - Self-service workspace creation via MCP
 
 Actions:
+- `actions.create` - Create automations with triggers, conditions, and 14 step types
 - `actions.list`, `actions.execute`
 
 Audit:

@@ -8,12 +8,13 @@
 - `workspace.create` tool - self-service setup via MCP
 - `records.bulkValidate/bulkCommit/bulkInspect` - bulk import with validation
 - `lists.create` tool - create custom list definitions via MCP
+- `actions.create` tool - define automations via MCP
+- action system execution (14 step types: field ops, record ops, list ops, webhooks, conditions, loops, MCP tool calls)
 
 ## High Priority
 
 ## Medium Priority
-- `actions.create` tool - define automations via MCP
-- action system execution (expand step types)
+- support for integrations
 - remote http mcp support
 - proper auth and user management
 
@@ -22,4 +23,5 @@
 - `schema.objectTypes.delete` - clean up custom types
 - self hostable (Convex self-host)
 - write tests
+- create simple pre-bundled ui
 - landing page

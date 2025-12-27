@@ -31,10 +31,10 @@ export function createServer() {
     },
     async ({ workspaceId, objectType, data, actorId }) => {
       const result = await convex.mutation(api.functions.records.mutations.create, {
-        workspaceId,
+        workspaceId: workspaceId as any,
         objectTypeSlug: objectType,
         data,
-        actorId,
+        actorId: actorId as any,
       });
       return {
         content: [
@@ -56,8 +56,8 @@ export function createServer() {
     },
     async ({ workspaceId, recordId }) => {
       const result = await convex.query(api.functions.records.queries.get, {
-        workspaceId,
-        recordId,
+        workspaceId: workspaceId as any,
+        recordId: recordId as any,
       });
       return {
         content: [
@@ -81,7 +81,7 @@ export function createServer() {
     },
     async ({ workspaceId, objectType, limit, cursor }) => {
       const result = await convex.query(api.functions.records.queries.list, {
-        workspaceId,
+        workspaceId: workspaceId as any,
         objectTypeSlug: objectType,
         limit,
         cursor,
@@ -108,10 +108,10 @@ export function createServer() {
     },
     async ({ workspaceId, recordId, data, actorId }) => {
       const result = await convex.mutation(api.functions.records.mutations.update, {
-        workspaceId,
-        recordId,
+        workspaceId: workspaceId as any,
+        recordId: recordId as any,
         data,
-        actorId,
+        actorId: actorId as any,
       });
       return {
         content: [
@@ -134,9 +134,9 @@ export function createServer() {
     },
     async ({ workspaceId, recordId, actorId }) => {
       const result = await convex.mutation(api.functions.records.mutations.remove, {
-        workspaceId,
-        recordId,
-        actorId,
+        workspaceId: workspaceId as any,
+        recordId: recordId as any,
+        actorId: actorId as any,
       });
       return {
         content: [
@@ -187,7 +187,7 @@ export function createServer() {
     },
     async ({ workspaceId, objectType, filters, query, sortBy, sortOrder, limit }) => {
       const result = await convex.query(api.functions.records.queries.search, {
-        workspaceId,
+        workspaceId: workspaceId as any,
         objectTypeSlug: objectType,
         filters,
         query,
@@ -219,8 +219,8 @@ export function createServer() {
     },
     async ({ workspaceId, recordId, relationship }) => {
       const result = await convex.query(api.functions.records.queries.getRelated, {
-        workspaceId,
-        recordId,
+        workspaceId: workspaceId as any,
+        recordId: recordId as any,
         relationship,
       });
       return {
@@ -259,10 +259,10 @@ export function createServer() {
     },
     async ({ workspaceId, objectType, records, actorId }) => {
       const result = await convex.mutation(api.functions.records.mutations.bulkValidate, {
-        workspaceId,
+        workspaceId: workspaceId as any,
         objectTypeSlug: objectType,
         records,
-        actorId,
+        actorId: actorId as any,
       });
       return {
         content: [
@@ -289,10 +289,10 @@ export function createServer() {
     },
     async ({ workspaceId, sessionId, mode, actorId }) => {
       const result = await convex.mutation(api.functions.records.mutations.bulkCommit, {
-        workspaceId,
-        sessionId,
+        workspaceId: workspaceId as any,
+        sessionId: sessionId as any,
         mode,
-        actorId,
+        actorId: actorId as any,
       });
       return {
         content: [
@@ -317,8 +317,8 @@ export function createServer() {
     },
     async ({ workspaceId, sessionId, indices }) => {
       const result = await convex.query(api.functions.records.queries.bulkInspect, {
-        workspaceId,
-        sessionId,
+        workspaceId: workspaceId as any,
+        sessionId: sessionId as any,
         indices,
       });
       return {
@@ -344,7 +344,7 @@ export function createServer() {
     },
     async ({ workspaceId }) => {
       const result = await convex.query(api.functions.objectTypes.queries.list, {
-        workspaceId,
+        workspaceId: workspaceId as any,
       });
       return {
         content: [
@@ -366,7 +366,7 @@ export function createServer() {
     },
     async ({ workspaceId, objectType }) => {
       const result = await convex.query(api.functions.objectTypes.queries.getWithAttributes, {
-        workspaceId,
+        workspaceId: workspaceId as any,
         slug: objectType,
       });
       return {
@@ -393,12 +393,12 @@ export function createServer() {
     },
     async ({ workspaceId, name, singularName, slug, description, actorId }) => {
       const result = await convex.mutation(api.functions.objectTypes.mutations.create, {
-        workspaceId,
+        workspaceId: workspaceId as any,
         name,
         singularName,
         slug,
         description,
-        actorId,
+        actorId: actorId as any,
       });
       return {
         content: [
@@ -454,14 +454,14 @@ export function createServer() {
       actorId,
     }) => {
       const result = await convex.mutation(api.functions.attributes.mutations.create, {
-        workspaceId,
+        workspaceId: workspaceId as any,
         objectTypeSlug: objectType,
         name,
         slug,
         type,
         isRequired: isRequired ?? false,
         config: config ?? {},
-        actorId,
+        actorId: actorId as any,
       });
       return {
         content: [
@@ -539,7 +539,7 @@ export function createServer() {
       actorId,
     }) => {
       const result = await convex.mutation(api.functions.lists.mutations.create, {
-        workspaceId,
+        workspaceId: workspaceId as any,
         name,
         slug,
         description,
@@ -547,7 +547,7 @@ export function createServer() {
         allowedObjectTypes,
         icon,
         attributes,
-        actorId,
+        actorId: actorId as any,
       });
       return {
         content: [
@@ -570,9 +570,9 @@ export function createServer() {
     },
     async ({ workspaceId, listSlug, parentRecordId }) => {
       const result = await convex.query(api.functions.lists.queries.getEntries, {
-        workspaceId,
+        workspaceId: workspaceId as any,
         listSlug,
-        parentRecordId,
+        parentRecordId: parentRecordId as any,
       });
       return {
         content: [
@@ -598,12 +598,12 @@ export function createServer() {
     },
     async ({ workspaceId, listSlug, recordId, parentRecordId, data, actorId }) => {
       const result = await convex.mutation(api.functions.lists.mutations.addEntry, {
-        workspaceId,
+        workspaceId: workspaceId as any,
         listSlug,
-        recordId,
-        parentRecordId,
+        recordId: recordId as any,
+        parentRecordId: parentRecordId as any,
         data: data ?? {},
-        actorId,
+        actorId: actorId as any,
       });
       return {
         content: [
@@ -628,11 +628,11 @@ export function createServer() {
     },
     async ({ workspaceId, listSlug, recordId, parentRecordId, actorId }) => {
       const result = await convex.mutation(api.functions.lists.mutations.removeEntry, {
-        workspaceId,
+        workspaceId: workspaceId as any,
         listSlug,
-        recordId,
-        parentRecordId,
-        actorId,
+        recordId: recordId as any,
+        parentRecordId: parentRecordId as any,
+        actorId: actorId as any,
       });
       return {
         content: [
@@ -690,8 +690,8 @@ export function createServer() {
     },
     async ({ workspaceId, recordId, limit }) => {
       const result = await convex.query(api.functions.audit.queries.getRecordHistory, {
-        workspaceId,
-        recordId,
+        workspaceId: workspaceId as any,
+        recordId: recordId as any,
         limit,
       });
       return {
@@ -720,10 +720,10 @@ export function createServer() {
     },
     async ({ workspaceId, actionSlug, recordId, actorId }) => {
       const result = await convex.mutation(api.functions.actions.mutations.execute, {
-        workspaceId,
+        workspaceId: workspaceId as any,
         actionSlug,
-        recordId,
-        actorId,
+        recordId: recordId as any,
+        actorId: actorId as any,
       });
       return {
         content: [
@@ -745,8 +745,119 @@ export function createServer() {
     },
     async ({ workspaceId, objectType }) => {
       const result = await convex.query(api.functions.actions.queries.list, {
-        workspaceId,
+        workspaceId: workspaceId as any,
         objectTypeSlug: objectType,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  const stepSchema = z.object({
+    id: z.string().describe("Unique step identifier"),
+    type: z.enum([
+      "updateField",
+      "clearField",
+      "copyField",
+      "transformField",
+      "createRecord",
+      "deleteRecord",
+      "archiveRecord",
+      "addToList",
+      "removeFromList",
+      "updateListEntry",
+      "sendWebhook",
+      "condition",
+      "loop",
+      "callMcpTool",
+    ]).describe("Step type"),
+    name: z.string().optional().describe("Human-readable step name"),
+    config: z.record(z.any()).describe("Step configuration (varies by type)"),
+    thenSteps: z.array(z.any()).optional().describe("Steps to run if condition passes"),
+    elseSteps: z.array(z.any()).optional().describe("Steps to run if condition fails"),
+    steps: z.array(z.any()).optional().describe("Steps to run in loop"),
+  });
+
+  server.tool(
+    "actions.create",
+    `Create an automation action with triggers, conditions, and steps.
+
+Step Types:
+- updateField: { field, value }
+- clearField: { field }
+- copyField: { sourceField, targetField }
+- transformField: { field, transform: "uppercase"|"lowercase"|"trim"|"round"|"increment"|"decrement", amount? }
+- createRecord: { objectType, data }
+- deleteRecord: { recordId?, useTriggeredRecord? }
+- archiveRecord: { recordId?, useTriggeredRecord? }
+- addToList: { list, recordId?, parentRecordId?, data? }
+- removeFromList: { list, recordId?, parentRecordId? }
+- updateListEntry: { list, recordId?, parentRecordId?, data }
+- sendWebhook: { url, method, headers?, body? }
+- condition: { conditions: [{field, operator, value}], logic: "and"|"or" } + thenSteps/elseSteps
+- loop: { source: "records"|"array"|"field", objectType?, filters?, items?, field?, maxIterations? } + steps
+- callMcpTool: { tool, arguments }
+
+Variable interpolation: Use {{record.field}}, {{previous.output}}, {{loopItem}}, {{loopIndex}} in config values.`,
+    {
+      workspaceId: z.string().describe("Workspace ID"),
+      name: z.string().describe("Action name"),
+      slug: z.string().describe("Unique action slug"),
+      description: z.string().optional().describe("Action description"),
+      trigger: z.object({
+        type: z.enum([
+          "manual",
+          "onCreate",
+          "onUpdate",
+          "onDelete",
+          "onFieldChange",
+          "onListAdd",
+          "onListRemove",
+          "scheduled",
+        ]).describe("When the action triggers"),
+        objectType: z.string().optional().describe("Object type slug (for record triggers)"),
+        list: z.string().optional().describe("List slug (for list triggers)"),
+        watchedFields: z.array(z.string()).optional().describe("Fields to watch (for onFieldChange)"),
+        schedule: z.string().optional().describe("Cron expression (for scheduled)"),
+      }),
+      conditions: z.array(z.object({
+        field: z.string(),
+        operator: z.enum([
+          "equals",
+          "notEquals",
+          "contains",
+          "notContains",
+          "greaterThan",
+          "lessThan",
+          "isEmpty",
+          "isNotEmpty",
+          "in",
+          "notIn",
+        ]),
+        value: z.any(),
+        logic: z.enum(["and", "or"]).optional(),
+      })).optional().describe("Conditions that must pass for action to run"),
+      steps: z.array(stepSchema).describe("Action steps to execute"),
+      isActive: z.boolean().optional().default(true).describe("Whether action is active"),
+      actorId: z.string().describe("ID of the workspace member creating this"),
+    },
+    async (args) => {
+      const result = await convex.mutation(api.functions.actions.mutations.createWithSlugs, {
+        workspaceId: args.workspaceId as any,
+        name: args.name,
+        slug: args.slug,
+        description: args.description,
+        trigger: args.trigger,
+        conditions: args.conditions as any,
+        steps: args.steps as any,
+        isActive: args.isActive,
+        actorId: args.actorId as any,
       });
       return {
         content: [

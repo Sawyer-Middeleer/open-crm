@@ -138,6 +138,7 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 ### Actions
 | Tool | Description |
 |------|-------------|
+| `actions.create` | Create automation with triggers, conditions, and steps |
 | `actions.list` | List available actions |
 | `actions.execute` | Run an action on a record |
 
@@ -180,6 +181,10 @@ Import these 50 contacts from my CSV and show me which ones have validation erro
 
 ```
 Show me the audit history for the last deal I created
+```
+
+```
+Create an action that when a deal stage changes to "won", creates a project and sends a webhook to Slack
 ```
 
 ## Development
