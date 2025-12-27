@@ -1,6 +1,23 @@
 import type { AuthProvider, AuthContext, AuthRequest } from "./types.js";
 import { AuthError } from "./errors.js";
 
+/**
+ * Check if error indicates provider is unavailable (network issue)
+ */
+function isNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return (
+    msg.includes("econnrefused") ||
+    msg.includes("enotfound") ||
+    msg.includes("etimedout") ||
+    msg.includes("timeout") ||
+    msg.includes("fetch failed") ||
+    msg.includes("network") ||
+    msg.includes("unreachable")
+  );
+}
+
 export interface AuthManagerConfig {
   providers: AuthProvider[];
 }
@@ -31,10 +48,18 @@ export class AuthManager {
           return context;
         }
       } catch (error) {
-        // Provider attempted auth but it failed - propagate
+        // Explicit auth failure - stop fallback
         if (error instanceof AuthError) {
           throw error;
         }
+        // Network error - provider unavailable, try next
+        if (isNetworkError(error)) {
+          console.warn(
+            `[Auth] Provider ${provider.name} unavailable: ${error instanceof Error ? error.message : String(error)}`
+          );
+          continue;
+        }
+        // Unknown error - wrap and throw
         throw new AuthError(
           `Authentication failed via ${provider.name}: ${error instanceof Error ? error.message : String(error)}`,
           401,

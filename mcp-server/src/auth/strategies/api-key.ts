@@ -93,12 +93,14 @@ export class ApiKeyProvider implements AuthProvider {
       );
     }
 
-    // Update last used timestamp (fire and forget)
+    // Update last used timestamp (fire and forget, but log errors)
     this.convex
       .mutation(api.functions.auth.mutations.updateApiKeyLastUsed, {
         keyPrefix,
       })
-      .catch(() => {});
+      .catch((error) => {
+        console.error("[Auth] Failed to update API key lastUsedAt:", error);
+      });
 
     return {
       userId: result.userId as Id<"users">,
