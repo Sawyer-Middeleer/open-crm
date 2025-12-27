@@ -472,3 +472,35 @@ export const getRelated = query({
     };
   },
 });
+
+export const bulkInspect = query({
+  args: {
+    workspaceId: v.id("workspaces"),
+    sessionId: v.id("bulkValidationSessions"),
+    indices: v.array(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+
+    if (!session) {
+      throw new Error("Validation session not found");
+    }
+
+    if (session.workspaceId !== args.workspaceId) {
+      throw new Error("Session not found in this workspace");
+    }
+
+    const records = args.indices
+      .filter((idx) => idx >= 0 && idx < session.records.length)
+      .map((idx) => ({
+        index: idx,
+        ...session.records[idx],
+      }));
+
+    return {
+      sessionId: args.sessionId,
+      status: session.status,
+      records,
+    };
+  },
+});

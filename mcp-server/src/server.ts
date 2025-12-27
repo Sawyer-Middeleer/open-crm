@@ -235,6 +235,104 @@ export function createServer() {
   );
 
   // ============================================================================
+  // BULK IMPORT TOOLS
+  // ============================================================================
+
+  server.tool(
+    "records.bulkValidate",
+    "Validate an array of records before import. Returns a token-efficient summary with error counts and sample failures. Use the returned sessionId with bulkCommit to insert valid records.",
+    {
+      workspaceId: z.string().describe("Workspace ID"),
+      objectType: z.string().describe("Object type slug (e.g., 'people')"),
+      records: z
+        .array(
+          z.object({
+            data: z.record(z.any()).describe("Record data keyed by attribute slug"),
+            externalId: z
+              .string()
+              .optional()
+              .describe("Optional external ID for tracking"),
+          })
+        )
+        .describe("Array of records to validate"),
+      actorId: z.string().describe("ID of the workspace member performing the import"),
+    },
+    async ({ workspaceId, objectType, records, actorId }) => {
+      const result = await convex.mutation(api.functions.records.mutations.bulkValidate, {
+        workspaceId,
+        objectTypeSlug: objectType,
+        records,
+        actorId,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  server.tool(
+    "records.bulkCommit",
+    "Commit validated records from a bulkValidate session. Use mode 'validOnly' to skip invalid records, or 'all' to attempt inserting everything.",
+    {
+      workspaceId: z.string().describe("Workspace ID"),
+      sessionId: z.string().describe("Session ID from bulkValidate"),
+      mode: z
+        .enum(["validOnly", "all"])
+        .default("validOnly")
+        .describe("'validOnly' skips invalid records, 'all' attempts everything"),
+      actorId: z.string().describe("ID of the workspace member performing the import"),
+    },
+    async ({ workspaceId, sessionId, mode, actorId }) => {
+      const result = await convex.mutation(api.functions.records.mutations.bulkCommit, {
+        workspaceId,
+        sessionId,
+        mode,
+        actorId,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  server.tool(
+    "records.bulkInspect",
+    "Inspect specific records from a validation session. Use this to see full details of invalid records before deciding how to proceed.",
+    {
+      workspaceId: z.string().describe("Workspace ID"),
+      sessionId: z.string().describe("Session ID from bulkValidate"),
+      indices: z
+        .array(z.number())
+        .describe("Array of record indices to inspect (0-based)"),
+    },
+    async ({ workspaceId, sessionId, indices }) => {
+      const result = await convex.query(api.functions.records.queries.bulkInspect, {
+        workspaceId,
+        sessionId,
+        indices,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  // ============================================================================
   // SCHEMA TOOLS
   // ============================================================================
 
@@ -379,6 +477,88 @@ export function createServer() {
   // ============================================================================
   // LIST TOOLS
   // ============================================================================
+
+  server.tool(
+    "lists.create",
+    "Create a custom list (many-to-many relationship) with optional attributes",
+    {
+      workspaceId: z.string().describe("Workspace ID"),
+      name: z.string().describe("List display name (e.g., 'Team Members')"),
+      slug: z.string().describe("URL-safe identifier (e.g., 'team_members')"),
+      description: z.string().optional().describe("Description of what this list represents"),
+      parentObjectType: z
+        .string()
+        .optional()
+        .describe("Parent object type slug (e.g., 'companies' for a contacts list)"),
+      allowedObjectTypes: z
+        .array(z.string())
+        .describe("Object type slugs that can be added to this list (e.g., ['people'])"),
+      icon: z.string().optional().describe("Icon identifier"),
+      attributes: z
+        .array(
+          z.object({
+            name: z.string().describe("Attribute display name"),
+            slug: z.string().describe("Attribute identifier"),
+            type: z
+              .enum([
+                "text",
+                "richText",
+                "number",
+                "currency",
+                "date",
+                "datetime",
+                "boolean",
+                "select",
+                "multiSelect",
+                "email",
+                "phone",
+                "url",
+                "reference",
+                "user",
+                "file",
+                "json",
+              ])
+              .describe("Attribute type"),
+            isRequired: z.boolean().optional().describe("Whether this field is required"),
+            config: z.record(z.any()).optional().describe("Type-specific configuration"),
+          })
+        )
+        .optional()
+        .describe("Custom attributes for list entries"),
+      actorId: z.string().describe("ID of the workspace member creating this list"),
+    },
+    async ({
+      workspaceId,
+      name,
+      slug,
+      description,
+      parentObjectType,
+      allowedObjectTypes,
+      icon,
+      attributes,
+      actorId,
+    }) => {
+      const result = await convex.mutation(api.functions.lists.mutations.create, {
+        workspaceId,
+        name,
+        slug,
+        description,
+        parentObjectType,
+        allowedObjectTypes,
+        icon,
+        attributes,
+        actorId,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+  );
 
   server.tool(
     "lists.getEntries",

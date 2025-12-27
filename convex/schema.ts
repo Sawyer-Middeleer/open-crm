@@ -145,6 +145,41 @@ const records = defineTable({
   .index("by_updated_at", ["workspaceId", "updatedAt"]);
 
 // ============================================================================
+// BULK IMPORT SESSIONS
+// ============================================================================
+
+const bulkValidationSessions = defineTable({
+  workspaceId: v.id("workspaces"),
+  objectTypeId: v.id("objectTypes"),
+  records: v.array(
+    v.object({
+      data: v.any(),
+      externalId: v.optional(v.string()),
+      isValid: v.boolean(),
+      errors: v.array(v.string()),
+      displayName: v.optional(v.string()),
+    })
+  ),
+  summary: v.object({
+    total: v.number(),
+    valid: v.number(),
+    invalid: v.number(),
+    errorsByType: v.any(), // { missingRequired: { count, fields }, ... }
+  }),
+  actorId: v.id("workspaceMembers"),
+  status: v.union(
+    v.literal("pending"),
+    v.literal("committed"),
+    v.literal("expired")
+  ),
+  createdAt: v.number(),
+  expiresAt: v.number(),
+})
+  .index("by_workspace", ["workspaceId"])
+  .index("by_status", ["status"])
+  .index("by_expires", ["expiresAt"]);
+
+// ============================================================================
 // LISTS (ATTIO-STYLE MANY-TO-MANY WITH ATTRIBUTES)
 // ============================================================================
 
@@ -496,6 +531,9 @@ export default defineSchema({
 
   // Data
   records,
+
+  // Bulk import
+  bulkValidationSessions,
 
   // Lists (many-to-many)
   lists,

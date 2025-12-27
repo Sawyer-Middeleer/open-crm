@@ -64,17 +64,28 @@ bun run build            # Deploys to Convex production
 
 **Actions**: Composable automations using predefined step types (updateField, sendWebhook, condition, etc.). No user code execution.
 
-### MCP Tools
+### MCP Tools (22 total)
 
 Record operations:
 - `records.create`, `records.get`, `records.list`, `records.update`, `records.delete`
+- `records.search` - Filter by field values with operators (equals, contains, greaterThan, etc.)
+- `records.getRelated` - Traverse relationships (references + list memberships)
+
+Bulk import:
+- `records.bulkValidate` - Validate records, returns token-efficient summary + session ID
+- `records.bulkCommit` - Insert valid records from session
+- `records.bulkInspect` - Inspect specific records from validation session
 
 Schema management:
 - `schema.objectTypes.list`, `schema.objectTypes.get`, `schema.objectTypes.create`
 - `schema.attributes.create`
 
 List operations:
+- `lists.create` - Create custom many-to-many relationships with junction attributes
 - `lists.getEntries`, `lists.addEntry`, `lists.removeEntry`
+
+Workspace:
+- `workspace.create` - Self-service workspace creation via MCP
 
 Actions:
 - `actions.list`, `actions.execute`

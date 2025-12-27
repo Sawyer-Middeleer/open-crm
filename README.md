@@ -104,6 +104,15 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 | `records.list` | List records of an object type |
 | `records.update` | Update record fields |
 | `records.delete` | Delete a record |
+| `records.search` | Search/filter records by field values with operators (equals, contains, greaterThan, etc.) |
+| `records.getRelated` | Get all related records via references and list memberships |
+
+### Bulk Import
+| Tool | Description |
+|------|-------------|
+| `records.bulkValidate` | Validate records before import, returns summary + session ID |
+| `records.bulkCommit` | Insert validated records from a session |
+| `records.bulkInspect` | Inspect specific records from a validation session |
 
 ### Schema
 | Tool | Description |
@@ -116,9 +125,15 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 ### Lists
 | Tool | Description |
 |------|-------------|
+| `lists.create` | Create a custom list (many-to-many relationship) with attributes |
 | `lists.getEntries` | Get list entries (optionally by parent) |
 | `lists.addEntry` | Add record to a list |
 | `lists.removeEntry` | Remove record from a list |
+
+### Workspace
+| Tool | Description |
+|------|-------------|
+| `workspace.create` | Create a new workspace with seeded object types |
 
 ### Actions
 | Tool | Description |
@@ -144,7 +159,23 @@ List all companies in the workspace
 ```
 
 ```
+Find all deals worth over $10,000 in the negotiation stage
+```
+
+```
+Show me all contacts at Acme Corp
+```
+
+```
 Create a custom object type called "Projects" with name, status, and due_date attributes
+```
+
+```
+Create a "Team Members" list that links people to companies with a role attribute
+```
+
+```
+Import these 50 contacts from my CSV and show me which ones have validation errors
 ```
 
 ```
