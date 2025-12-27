@@ -27,7 +27,7 @@ export const getBySlug = query({
 
 export const listForUser = query({
   args: {
-    userId: v.string(),
+    userId: v.id("users"),
   },
   handler: async (ctx, args) => {
     const memberships = await ctx.db

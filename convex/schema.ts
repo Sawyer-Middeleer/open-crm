@@ -2,6 +2,37 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 // ============================================================================
+// USERS & AUTHENTICATION
+// ============================================================================
+
+const users = defineTable({
+  authProvider: v.string(), // "workos", "propelauth", "auth0", "custom"
+  authProviderId: v.string(), // External provider's user ID
+  email: v.string(),
+  name: v.optional(v.string()),
+  preferences: v.object({
+    defaultWorkspaceId: v.optional(v.id("workspaces")),
+    timezone: v.optional(v.string()),
+  }),
+  status: v.union(v.literal("active"), v.literal("suspended")),
+  lastLoginAt: v.optional(v.number()),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+})
+  .index("by_auth_provider", ["authProvider", "authProviderId"])
+  .index("by_email", ["email"]);
+
+const sessions = defineTable({
+  userId: v.id("users"),
+  sessionToken: v.string(),
+  expiresAt: v.number(),
+  lastActiveAt: v.number(),
+  createdAt: v.number(),
+})
+  .index("by_session_token", ["sessionToken"])
+  .index("by_user", ["userId"]);
+
+// ============================================================================
 // MULTI-TENANCY
 // ============================================================================
 
@@ -18,8 +49,7 @@ const workspaces = defineTable({
 
 const workspaceMembers = defineTable({
   workspaceId: v.id("workspaces"),
-  userId: v.string(), // external auth provider ID
-  email: v.string(),
+  userId: v.id("users"),
   role: v.union(
     v.literal("owner"),
     v.literal("admin"),
@@ -445,17 +475,19 @@ const actionExecutions = defineTable({
 
 const apiKeys = defineTable({
   workspaceId: v.id("workspaces"),
+  userId: v.optional(v.id("users")), // Optional user association
   name: v.string(),
   keyHash: v.string(),
   keyPrefix: v.string(),
-  permissions: v.array(v.string()),
+  scopes: v.array(v.string()), // e.g., ["records:read", "records:write"]
   expiresAt: v.optional(v.number()),
   lastUsedAt: v.optional(v.number()),
-  createdBy: v.id("workspaceMembers"),
+  createdBy: v.id("users"),
   createdAt: v.number(),
   isActive: v.boolean(),
 })
   .index("by_workspace", ["workspaceId"])
+  .index("by_user", ["userId"])
   .index("by_key_prefix", ["keyPrefix"]);
 
 const webhookEndpoints = defineTable({
@@ -668,6 +700,10 @@ const views = defineTable({
 // ============================================================================
 
 export default defineSchema({
+  // Users & Authentication
+  users,
+  sessions,
+
   // Multi-tenancy
   workspaces,
   workspaceMembers,

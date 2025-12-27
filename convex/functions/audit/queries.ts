@@ -28,7 +28,9 @@ export const getRecordHistory = query({
         if (log.actorId) {
           const member = await ctx.db.get(log.actorId);
           if (member) {
-            actor = { id: member._id, email: member.email };
+            // Get user email from users table
+            const user = await ctx.db.get(member.userId);
+            actor = { id: member._id, email: user?.email };
           }
         }
 

@@ -14,7 +14,7 @@ bunx convex dev          # Sets up Convex deployment and starts dev server
 
 # Development
 bun run dev              # Runs Convex dev server
-bun run dev:mcp          # Runs MCP server (in mcp-server/)
+bun run dev:mcp          # Runs HTTP MCP server on port 3000
 
 # Production
 bun run build            # Deploys to Convex production
@@ -43,13 +43,27 @@ bun run build            # Deploys to Convex production
 │       ├── records/            # Record CRUD
 │       ├── lists/              # Attio-style many-to-many lists
 │       ├── actions/            # Composable automation actions
+│       ├── auth/               # Auth queries and mutations
 │       └── audit/              # Audit log queries
 │
-├── mcp-server/                 # MCP server (Bun)
+├── mcp-server/                 # HTTP MCP server (Bun)
 │   └── src/
-│       ├── index.ts            # Entry point
+│       ├── index.ts            # Entry point (starts HTTP server)
+│       ├── http.ts             # HTTP server with auth middleware
 │       ├── server.ts           # MCP server with all tools
-│       └── convex/client.ts    # Convex HTTP client
+│       ├── convex/client.ts    # Convex HTTP client
+│       └── auth/               # Authentication system
+│           ├── types.ts        # AuthContext, AuthProvider interfaces
+│           ├── manager.ts      # AuthManager orchestration
+│           ├── config.ts       # Environment-based configuration
+│           ├── strategies/     # Auth strategies
+│           │   ├── api-key.ts  # X-API-Key header auth
+│           │   └── oauth.ts    # Bearer token + JWKS validation
+│           └── providers/      # OAuth provider configs
+│               ├── workos.ts
+│               ├── propelauth.ts
+│               ├── auth0.ts
+│               └── custom.ts
 ```
 
 ### Core Concepts
@@ -73,7 +87,7 @@ Step types:
 
 Variable interpolation: `{{record.field}}`, `{{previous.output}}`, `{{loopItem}}`, `{{loopIndex}}`
 
-### MCP Tools (23 total)
+### MCP Tools (35 total)
 
 Record operations:
 - `records.create`, `records.get`, `records.list`, `records.update`, `records.delete`
@@ -100,6 +114,17 @@ Actions:
 - `actions.create` - Create automations with triggers, conditions, and 14 step types
 - `actions.list`, `actions.execute`
 
+Integrations:
+- `integrations.createWebhookEndpoint`, `integrations.listWebhookEndpoints`, `integrations.getWebhookLogs`
+- `integrations.createTemplate`, `integrations.listTemplates`, `integrations.sendRequest`, `integrations.getRequestLogs`
+
+Users & API Keys:
+- `users.me` - Get current authenticated user and their workspaces
+- `users.updatePreferences` - Update user preferences (timezone, default workspace)
+- `apiKeys.create` - Create API key (secret shown only once)
+- `apiKeys.list` - List keys for workspace (without secrets)
+- `apiKeys.revoke` - Revoke an API key
+
 Audit:
 - `audit.getHistory`
 
@@ -110,6 +135,37 @@ Required in `.env`:
 CONVEX_URL=https://your-deployment.convex.cloud
 ```
 
+Optional auth provider configuration (choose one):
+```bash
+# WorkOS
+MCP_AUTH_PROVIDER=workos
+WORKOS_CLIENT_ID=client_xxx
+
+# PropelAuth
+MCP_AUTH_PROVIDER=propelauth
+PROPELAUTH_AUTH_URL=https://xxx.propelauthtest.com
+
+# Auth0
+MCP_AUTH_PROVIDER=auth0
+AUTH0_DOMAIN=your-tenant.auth0.com
+AUTH0_AUDIENCE=https://api.massive-crm.example
+
+# Custom JWKS
+MCP_AUTH_PROVIDER=custom
+OAUTH_ISSUER=https://your-idp.com
+OAUTH_JWKS_URI=https://your-idp.com/.well-known/jwks.json
+```
+
+## Authentication
+
+The MCP server uses HTTP transport with pluggable authentication:
+
+**API Key auth**: `X-API-Key: mcrm_<prefix>_<secret>` + `X-Workspace-Id` header
+
+**OAuth auth**: `Authorization: Bearer <jwt>` + `X-Workspace-Id` header
+
+All tools automatically use auth context - no explicit `workspaceId` or `actorId` parameters needed.
+
 ## Multi-Tenancy
 
-All data is scoped by `workspaceId`. Every table has workspace indexes. Create a workspace first via `workspaces.mutations.create` which seeds system object types.
+All data is scoped by `workspaceId`. Every table has workspace indexes. Users can belong to multiple workspaces with different roles (owner, admin, member, viewer).

@@ -1,8 +1,31 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { getConvexClient } from "./convex/client.js";
 import { api } from "../../convex/_generated/api.js";
+import type { Id } from "../../convex/_generated/dataModel.js";
+
+export type McpServerWrapper = ReturnType<typeof createServer>;
+
+/**
+ * Extract auth context from MCP tool extra parameter
+ */
+interface AuthContextFromExtra {
+  userId: Id<"users">;
+  email?: string;
+  workspaceId: Id<"workspaces">;
+  workspaceMemberId: Id<"workspaceMembers">;
+  role: "owner" | "admin" | "member" | "viewer";
+  authMethod: "oauth" | "api-key";
+  provider?: string;
+}
+
+function getAuthContext(extra: unknown): AuthContextFromExtra {
+  const authInfo = (extra as any)?.authInfo;
+  if (!authInfo?.extra) {
+    throw new Error("Authentication required");
+  }
+  return authInfo.extra as AuthContextFromExtra;
+}
 
 export function createServer() {
   const server = new McpServer({
@@ -20,21 +43,20 @@ export function createServer() {
     "records.create",
     "Create a new record of any object type",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       objectType: z
         .string()
         .describe("Object type slug (e.g., 'people', 'companies', 'deals')"),
       data: z
         .record(z.any())
         .describe("Record data keyed by attribute slug"),
-      actorId: z.string().describe("ID of the workspace member creating this record"),
     },
-    async ({ workspaceId, objectType, data, actorId }) => {
+    async ({ objectType, data }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.mutation(api.functions.records.mutations.create, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         objectTypeSlug: objectType,
         data,
-        actorId: actorId as any,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -51,12 +73,12 @@ export function createServer() {
     "records.get",
     "Get a single record by ID",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       recordId: z.string().describe("Record ID"),
     },
-    async ({ workspaceId, recordId }) => {
+    async ({ recordId }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.query(api.functions.records.queries.get, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         recordId: recordId as any,
       });
       return {
@@ -74,14 +96,14 @@ export function createServer() {
     "records.list",
     "List records of a specific object type",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       objectType: z.string().describe("Object type slug"),
       limit: z.number().optional().describe("Maximum number of records to return"),
       cursor: z.string().optional().describe("Pagination cursor"),
     },
-    async ({ workspaceId, objectType, limit, cursor }) => {
+    async ({ objectType, limit, cursor }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.query(api.functions.records.queries.list, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         objectTypeSlug: objectType,
         limit,
         cursor,
@@ -101,17 +123,16 @@ export function createServer() {
     "records.update",
     "Update an existing record",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       recordId: z.string().describe("Record ID"),
       data: z.record(z.any()).describe("Fields to update"),
-      actorId: z.string().describe("ID of the workspace member updating this record"),
     },
-    async ({ workspaceId, recordId, data, actorId }) => {
+    async ({ recordId, data }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.mutation(api.functions.records.mutations.update, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         recordId: recordId as any,
         data,
-        actorId: actorId as any,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -128,15 +149,14 @@ export function createServer() {
     "records.delete",
     "Delete a record",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       recordId: z.string().describe("Record ID"),
-      actorId: z.string().describe("ID of the workspace member deleting this record"),
     },
-    async ({ workspaceId, recordId, actorId }) => {
+    async ({ recordId }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.mutation(api.functions.records.mutations.remove, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         recordId: recordId as any,
-        actorId: actorId as any,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -153,7 +173,6 @@ export function createServer() {
     "records.search",
     "Search and filter records by field values. Supports filtering by any attribute with operators like equals, contains, greaterThan, etc.",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       objectType: z.string().optional().describe("Object type slug to filter by (e.g., 'people', 'deals')"),
       filters: z
         .array(
@@ -185,9 +204,10 @@ export function createServer() {
       sortOrder: z.enum(["asc", "desc"]).optional().describe("Sort order (default: asc)"),
       limit: z.number().optional().describe("Maximum number of records to return (default: 50)"),
     },
-    async ({ workspaceId, objectType, filters, query, sortBy, sortOrder, limit }) => {
+    async ({ objectType, filters, query, sortBy, sortOrder, limit }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.query(api.functions.records.queries.search, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         objectTypeSlug: objectType,
         filters,
         query,
@@ -210,16 +230,16 @@ export function createServer() {
     "records.getRelated",
     "Get all records related to a given record via references or list memberships. Returns outbound references (this record points to), inbound references (other records point to this), and list relationships.",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       recordId: z.string().describe("Record ID to get relationships for"),
       relationship: z
         .string()
         .optional()
         .describe("Filter to specific relationship (attribute slug or list slug)"),
     },
-    async ({ workspaceId, recordId, relationship }) => {
+    async ({ recordId, relationship }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.query(api.functions.records.queries.getRelated, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         recordId: recordId as any,
         relationship,
       });
@@ -242,7 +262,6 @@ export function createServer() {
     "records.bulkValidate",
     "Validate an array of records before import. Returns a token-efficient summary with error counts and sample failures. Use the returned sessionId with bulkCommit to insert valid records.",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       objectType: z.string().describe("Object type slug (e.g., 'people')"),
       records: z
         .array(
@@ -255,14 +274,14 @@ export function createServer() {
           })
         )
         .describe("Array of records to validate"),
-      actorId: z.string().describe("ID of the workspace member performing the import"),
     },
-    async ({ workspaceId, objectType, records, actorId }) => {
+    async ({ objectType, records }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.mutation(api.functions.records.mutations.bulkValidate, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         objectTypeSlug: objectType,
         records,
-        actorId: actorId as any,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -279,20 +298,19 @@ export function createServer() {
     "records.bulkCommit",
     "Commit validated records from a bulkValidate session. Use mode 'validOnly' to skip invalid records, or 'all' to attempt inserting everything.",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       sessionId: z.string().describe("Session ID from bulkValidate"),
       mode: z
         .enum(["validOnly", "all"])
         .default("validOnly")
         .describe("'validOnly' skips invalid records, 'all' attempts everything"),
-      actorId: z.string().describe("ID of the workspace member performing the import"),
     },
-    async ({ workspaceId, sessionId, mode, actorId }) => {
+    async ({ sessionId, mode }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.mutation(api.functions.records.mutations.bulkCommit, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         sessionId: sessionId as any,
         mode,
-        actorId: actorId as any,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -309,15 +327,15 @@ export function createServer() {
     "records.bulkInspect",
     "Inspect specific records from a validation session. Use this to see full details of invalid records before deciding how to proceed.",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       sessionId: z.string().describe("Session ID from bulkValidate"),
       indices: z
         .array(z.number())
         .describe("Array of record indices to inspect (0-based)"),
     },
-    async ({ workspaceId, sessionId, indices }) => {
+    async ({ sessionId, indices }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.query(api.functions.records.queries.bulkInspect, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         sessionId: sessionId as any,
         indices,
       });
@@ -338,13 +356,12 @@ export function createServer() {
 
   server.tool(
     "schema.objectTypes.list",
-    "List all object types in a workspace",
-    {
-      workspaceId: z.string().describe("Workspace ID"),
-    },
-    async ({ workspaceId }) => {
+    "List all object types in the workspace",
+    {},
+    async (_args, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.query(api.functions.objectTypes.queries.list, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
       });
       return {
         content: [
@@ -361,12 +378,12 @@ export function createServer() {
     "schema.objectTypes.get",
     "Get an object type with its attributes",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       objectType: z.string().describe("Object type slug"),
     },
-    async ({ workspaceId, objectType }) => {
+    async ({ objectType }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.query(api.functions.objectTypes.queries.getWithAttributes, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         slug: objectType,
       });
       return {
@@ -384,21 +401,20 @@ export function createServer() {
     "schema.objectTypes.create",
     "Create a new custom object type",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       name: z.string().describe("Display name (e.g., 'Projects')"),
       singularName: z.string().describe("Singular form (e.g., 'Project')"),
       slug: z.string().describe("URL-safe identifier (e.g., 'projects')"),
       description: z.string().optional().describe("Description of the object type"),
-      actorId: z.string().describe("ID of the workspace member creating this"),
     },
-    async ({ workspaceId, name, singularName, slug, description, actorId }) => {
+    async ({ name, singularName, slug, description }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.mutation(api.functions.objectTypes.mutations.create, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         name,
         singularName,
         slug,
         description,
-        actorId: actorId as any,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -415,7 +431,6 @@ export function createServer() {
     "schema.attributes.create",
     "Add an attribute to an object type",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       objectType: z.string().describe("Object type slug"),
       name: z.string().describe("Display name"),
       slug: z.string().describe("Attribute identifier"),
@@ -441,27 +456,18 @@ export function createServer() {
         .describe("Attribute type"),
       isRequired: z.boolean().optional().describe("Whether this field is required"),
       config: z.record(z.any()).optional().describe("Type-specific configuration"),
-      actorId: z.string().describe("ID of the workspace member creating this"),
     },
-    async ({
-      workspaceId,
-      objectType,
-      name,
-      slug,
-      type,
-      isRequired,
-      config,
-      actorId,
-    }) => {
+    async ({ objectType, name, slug, type, isRequired, config }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.mutation(api.functions.attributes.mutations.create, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         objectTypeSlug: objectType,
         name,
         slug,
         type,
         isRequired: isRequired ?? false,
         config: config ?? {},
-        actorId: actorId as any,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -482,7 +488,6 @@ export function createServer() {
     "lists.create",
     "Create a custom list (many-to-many relationship) with optional attributes",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       name: z.string().describe("List display name (e.g., 'Team Members')"),
       slug: z.string().describe("URL-safe identifier (e.g., 'team_members')"),
       description: z.string().optional().describe("Description of what this list represents"),
@@ -525,21 +530,11 @@ export function createServer() {
         )
         .optional()
         .describe("Custom attributes for list entries"),
-      actorId: z.string().describe("ID of the workspace member creating this list"),
     },
-    async ({
-      workspaceId,
-      name,
-      slug,
-      description,
-      parentObjectType,
-      allowedObjectTypes,
-      icon,
-      attributes,
-      actorId,
-    }) => {
+    async ({ name, slug, description, parentObjectType, allowedObjectTypes, icon, attributes }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.mutation(api.functions.lists.mutations.create, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         name,
         slug,
         description,
@@ -547,7 +542,7 @@ export function createServer() {
         allowedObjectTypes,
         icon,
         attributes,
-        actorId: actorId as any,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -564,13 +559,13 @@ export function createServer() {
     "lists.getEntries",
     "Get entries from a list, optionally filtered by parent record",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       listSlug: z.string().describe("List slug"),
       parentRecordId: z.string().optional().describe("Filter by parent record ID"),
     },
-    async ({ workspaceId, listSlug, parentRecordId }) => {
+    async ({ listSlug, parentRecordId }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.query(api.functions.lists.queries.getEntries, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         listSlug,
         parentRecordId: parentRecordId as any,
       });
@@ -589,21 +584,20 @@ export function createServer() {
     "lists.addEntry",
     "Add a record to a list",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       listSlug: z.string().describe("List slug"),
       recordId: z.string().describe("Record to add"),
       parentRecordId: z.string().optional().describe("Parent record (for scoped lists)"),
       data: z.record(z.any()).optional().describe("List entry attribute values"),
-      actorId: z.string().describe("ID of the workspace member adding this entry"),
     },
-    async ({ workspaceId, listSlug, recordId, parentRecordId, data, actorId }) => {
+    async ({ listSlug, recordId, parentRecordId, data }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.mutation(api.functions.lists.mutations.addEntry, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         listSlug,
         recordId: recordId as any,
         parentRecordId: parentRecordId as any,
         data: data ?? {},
-        actorId: actorId as any,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -620,19 +614,18 @@ export function createServer() {
     "lists.removeEntry",
     "Remove a record from a list",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       listSlug: z.string().describe("List slug"),
       recordId: z.string().describe("Record to remove"),
       parentRecordId: z.string().optional().describe("Parent record (for scoped lists)"),
-      actorId: z.string().describe("ID of the workspace member removing this entry"),
     },
-    async ({ workspaceId, listSlug, recordId, parentRecordId, actorId }) => {
+    async ({ listSlug, recordId, parentRecordId }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.mutation(api.functions.lists.mutations.removeEntry, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         listSlug,
         recordId: recordId as any,
         parentRecordId: parentRecordId as any,
-        actorId: actorId as any,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -651,19 +644,17 @@ export function createServer() {
 
   server.tool(
     "workspace.create",
-    "Create a new workspace with default object types (People, Companies, Deals)",
+    "Create a new workspace with default object types (People, Companies, Deals). Uses the authenticated user as the owner.",
     {
       name: z.string().describe("Workspace display name"),
       slug: z.string().describe("URL-safe identifier (must be unique)"),
-      ownerUserId: z.string().describe("External user ID for the owner"),
-      ownerEmail: z.string().describe("Owner's email address"),
     },
-    async ({ name, slug, ownerUserId, ownerEmail }) => {
+    async ({ name, slug }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.mutation(api.functions.workspaces.mutations.create, {
         name,
         slug,
-        ownerUserId,
-        ownerEmail,
+        userId: auth.userId,
       });
       return {
         content: [
@@ -684,13 +675,13 @@ export function createServer() {
     "audit.getHistory",
     "Get audit history for a specific record",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       recordId: z.string().describe("Record ID to get history for"),
       limit: z.number().optional().describe("Maximum entries to return"),
     },
-    async ({ workspaceId, recordId, limit }) => {
+    async ({ recordId, limit }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.query(api.functions.audit.queries.getRecordHistory, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         recordId: recordId as any,
         limit,
       });
@@ -713,17 +704,16 @@ export function createServer() {
     "actions.execute",
     "Execute a custom action on a record",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       actionSlug: z.string().describe("Action slug"),
       recordId: z.string().describe("Record to execute action on"),
-      actorId: z.string().describe("ID of the workspace member executing this"),
     },
-    async ({ workspaceId, actionSlug, recordId, actorId }) => {
+    async ({ actionSlug, recordId }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.mutation(api.functions.actions.mutations.execute, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         actionSlug,
         recordId: recordId as any,
-        actorId: actorId as any,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -740,12 +730,12 @@ export function createServer() {
     "actions.list",
     "List available actions for an object type",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       objectType: z.string().optional().describe("Filter by object type slug"),
     },
-    async ({ workspaceId, objectType }) => {
+    async ({ objectType }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.query(api.functions.actions.queries.list, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         objectTypeSlug: objectType,
       });
       return {
@@ -806,7 +796,6 @@ Step Types:
 
 Variable interpolation: Use {{record.field}}, {{previous.output}}, {{loopItem}}, {{loopIndex}} in config values.`,
     {
-      workspaceId: z.string().describe("Workspace ID"),
       name: z.string().describe("Action name"),
       slug: z.string().describe("Unique action slug"),
       description: z.string().optional().describe("Action description"),
@@ -845,11 +834,11 @@ Variable interpolation: Use {{record.field}}, {{previous.output}}, {{loopItem}},
       })).optional().describe("Conditions that must pass for action to run"),
       steps: z.array(stepSchema).describe("Action steps to execute"),
       isActive: z.boolean().optional().default(true).describe("Whether action is active"),
-      actorId: z.string().describe("ID of the workspace member creating this"),
     },
-    async (args) => {
+    async (args, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.mutation(api.functions.actions.mutations.createWithSlugs, {
-        workspaceId: args.workspaceId as any,
+        workspaceId: auth.workspaceId,
         name: args.name,
         slug: args.slug,
         description: args.description,
@@ -857,7 +846,7 @@ Variable interpolation: Use {{record.field}}, {{previous.output}}, {{loopItem}},
         conditions: args.conditions as any,
         steps: args.steps as any,
         isActive: args.isActive,
-        actorId: args.actorId as any,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -882,7 +871,6 @@ Handler types:
 - createRecord: Creates a new record using field mapping from payload
 - triggerAction: Triggers an action with the webhook payload as context`,
     {
-      workspaceId: z.string().describe("Workspace ID"),
       name: z.string().describe("Webhook name"),
       slug: z.string().describe("URL slug (used in webhook URL path)"),
       description: z.string().optional().describe("Webhook description"),
@@ -890,11 +878,11 @@ Handler types:
       objectType: z.string().optional().describe("Object type slug (for createRecord handler)"),
       fieldMapping: z.record(z.string()).optional().describe("Map payload paths to field slugs, e.g. {'data.email': 'email'}"),
       actionSlug: z.string().optional().describe("Action slug (for triggerAction handler)"),
-      actorId: z.string().describe("ID of the workspace member creating this"),
     },
-    async (args) => {
+    async (args, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.mutation(api.functions.integrations.mutations.createIncomingWebhook, {
-        workspaceId: args.workspaceId as any,
+        workspaceId: auth.workspaceId,
         name: args.name,
         slug: args.slug,
         description: args.description,
@@ -904,7 +892,7 @@ Handler types:
           fieldMapping: args.fieldMapping,
           actionSlug: args.actionSlug,
         },
-        actorId: args.actorId as any,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -921,12 +909,12 @@ Handler types:
     "integrations.listWebhookEndpoints",
     "List all incoming webhook endpoints for a workspace",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       includeInactive: z.boolean().optional().describe("Include disabled webhooks"),
     },
-    async ({ workspaceId, includeInactive }) => {
+    async ({ includeInactive }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.query(api.functions.integrations.queries.listIncomingWebhooks, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         includeInactive,
       });
       return {
@@ -944,13 +932,13 @@ Handler types:
     "integrations.getWebhookLogs",
     "Get logs of received webhook requests",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       webhookId: z.string().optional().describe("Filter by specific webhook ID"),
       limit: z.number().optional().describe("Maximum number of logs to return (default 50)"),
     },
-    async ({ workspaceId, webhookId, limit }) => {
+    async ({ webhookId, limit }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.query(api.functions.integrations.queries.getWebhookLogs, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         webhookId: webhookId as any,
         limit,
       });
@@ -971,7 +959,6 @@ Handler types:
 Templates can use {{variable}} placeholders in URL, headers, and body.
 Auth credentials are stored as environment variable NAMES (not values).`,
     {
-      workspaceId: z.string().describe("Workspace ID"),
       name: z.string().describe("Template name"),
       slug: z.string().describe("Unique template slug"),
       description: z.string().optional().describe("Template description"),
@@ -987,11 +974,11 @@ Auth credentials are stored as environment variable NAMES (not values).`,
         headerName: z.string().optional().describe("Header name for API key (default: X-API-Key)"),
         keyEnvVar: z.string().optional().describe("Env var name containing API key"),
       }).optional().describe("Authentication configuration"),
-      actorId: z.string().describe("ID of the workspace member creating this"),
     },
-    async (args) => {
+    async (args, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.mutation(api.functions.integrations.mutations.createHttpTemplate, {
-        workspaceId: args.workspaceId as any,
+        workspaceId: auth.workspaceId,
         name: args.name,
         slug: args.slug,
         description: args.description,
@@ -1000,7 +987,7 @@ Auth credentials are stored as environment variable NAMES (not values).`,
         headers: args.headers,
         body: args.body,
         auth: args.auth,
-        actorId: args.actorId as any,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -1016,12 +1003,11 @@ Auth credentials are stored as environment variable NAMES (not values).`,
   server.tool(
     "integrations.listTemplates",
     "List all HTTP request templates for a workspace",
-    {
-      workspaceId: z.string().describe("Workspace ID"),
-    },
-    async ({ workspaceId }) => {
+    {},
+    async (_args, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.query(api.functions.integrations.queries.listHttpTemplates, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
       });
       return {
         content: [
@@ -1039,7 +1025,6 @@ Auth credentials are stored as environment variable NAMES (not values).`,
     `Send an HTTP request directly or using a template.
 Use either url/method/headers/body for ad-hoc requests, or templateSlug with variables.`,
     {
-      workspaceId: z.string().describe("Workspace ID"),
       method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).optional().describe("HTTP method (if not using template)"),
       url: z.string().optional().describe("Request URL (if not using template)"),
       headers: z.record(z.string()).optional().describe("Request headers"),
@@ -1052,9 +1037,9 @@ Use either url/method/headers/body for ad-hoc requests, or templateSlug with var
         headerName: z.string().optional(),
         keyEnvVar: z.string().optional(),
       }).optional().describe("Auth config (if not using template)"),
-      actorId: z.string().describe("ID of the workspace member"),
     },
-    async (args) => {
+    async (args, extra) => {
+      const auth = getAuthContext(extra);
       if (!args.url || !args.method) {
         return {
           content: [
@@ -1066,13 +1051,13 @@ Use either url/method/headers/body for ad-hoc requests, or templateSlug with var
         };
       }
       const result = await convex.action(api.functions.integrations.httpActions.sendRequest, {
-        workspaceId: args.workspaceId as any,
+        workspaceId: auth.workspaceId,
         method: args.method,
         url: args.url,
         headers: args.headers,
         body: args.body,
         authConfig: args.authConfig,
-        actorId: args.actorId as any,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -1089,13 +1074,13 @@ Use either url/method/headers/body for ad-hoc requests, or templateSlug with var
     "integrations.getRequestLogs",
     "Get logs of outgoing HTTP requests",
     {
-      workspaceId: z.string().describe("Workspace ID"),
       templateId: z.string().optional().describe("Filter by template ID"),
       limit: z.number().optional().describe("Maximum number of logs to return (default 50)"),
     },
-    async ({ workspaceId, templateId, limit }) => {
+    async ({ templateId, limit }, extra) => {
+      const auth = getAuthContext(extra);
       const result = await convex.query(api.functions.integrations.queries.getHttpRequestLogs, {
-        workspaceId: workspaceId as any,
+        workspaceId: auth.workspaceId,
         templateId: templateId as any,
         limit,
       });
@@ -1111,14 +1096,153 @@ Use either url/method/headers/body for ad-hoc requests, or templateSlug with var
   );
 
   // ============================================================================
-  // START SERVER
+  // USER TOOLS
+  // ============================================================================
+
+  server.tool(
+    "users.me",
+    "Get the currently authenticated user's information including their workspaces",
+    {},
+    async (_args, extra) => {
+      const auth = getAuthContext(extra);
+      const [user, workspaces] = await Promise.all([
+        convex.query(api.functions.auth.queries.getUser, {
+          userId: auth.userId,
+        }),
+        convex.query(api.functions.auth.queries.listUserWorkspaces, {
+          userId: auth.userId,
+        }),
+      ]);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ user, workspaces }, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  server.tool(
+    "users.updatePreferences",
+    "Update the current user's preferences",
+    {
+      defaultWorkspaceId: z.string().optional().describe("Default workspace ID"),
+      timezone: z.string().optional().describe("User's timezone (e.g., 'America/New_York')"),
+    },
+    async ({ defaultWorkspaceId, timezone }, extra) => {
+      const auth = getAuthContext(extra);
+      const result = await convex.mutation(api.functions.auth.mutations.updateUserPreferences, {
+        userId: auth.userId,
+        preferences: {
+          defaultWorkspaceId: defaultWorkspaceId as any,
+          timezone,
+        },
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  // ============================================================================
+  // API KEY TOOLS
+  // ============================================================================
+
+  server.tool(
+    "apiKeys.create",
+    "Create a new API key for the current workspace. The key is only shown once - save it securely!",
+    {
+      name: z.string().describe("Name to identify this key"),
+      scopes: z.array(z.string()).optional().describe("Permission scopes (default: all)"),
+      expiresInDays: z.number().optional().describe("Number of days until expiration (optional)"),
+    },
+    async ({ name, scopes, expiresInDays }, extra) => {
+      const auth = getAuthContext(extra);
+      const expiresAt = expiresInDays
+        ? Date.now() + expiresInDays * 24 * 60 * 60 * 1000
+        : undefined;
+
+      const result = await convex.mutation(api.functions.auth.mutations.createApiKey, {
+        workspaceId: auth.workspaceId,
+        userId: auth.userId,
+        name,
+        scopes: scopes ?? ["*"],
+        expiresAt,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                ...result,
+                warning: "Save this key now - it cannot be retrieved later!",
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+  );
+
+  server.tool(
+    "apiKeys.list",
+    "List all API keys for the current workspace (secrets are not shown)",
+    {},
+    async (_args, extra) => {
+      const auth = getAuthContext(extra);
+      const result = await convex.query(api.functions.auth.queries.listApiKeys, {
+        workspaceId: auth.workspaceId,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  server.tool(
+    "apiKeys.revoke",
+    "Revoke an API key, making it permanently inactive",
+    {
+      keyId: z.string().describe("API key ID to revoke"),
+    },
+    async ({ keyId }, extra) => {
+      const auth = getAuthContext(extra);
+      const result = await convex.mutation(api.functions.auth.mutations.revokeApiKey, {
+        keyId: keyId as any,
+        userId: auth.userId,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  // ============================================================================
+  // RETURN SERVER
   // ============================================================================
 
   return {
-    start: async () => {
-      const transport = new StdioServerTransport();
-      await server.connect(transport);
-      console.error("Massive CRM MCP server started");
-    },
+    server,
+    convex,
   };
 }

@@ -12,6 +12,8 @@ import type * as functions_actions_mutations from "../functions/actions/mutation
 import type * as functions_actions_queries from "../functions/actions/queries.js";
 import type * as functions_attributes_mutations from "../functions/attributes/mutations.js";
 import type * as functions_audit_queries from "../functions/audit/queries.js";
+import type * as functions_auth_mutations from "../functions/auth/mutations.js";
+import type * as functions_auth_queries from "../functions/auth/queries.js";
 import type * as functions_integrations_httpActions from "../functions/integrations/httpActions.js";
 import type * as functions_integrations_mutations from "../functions/integrations/mutations.js";
 import type * as functions_integrations_queries from "../functions/integrations/queries.js";
@@ -39,6 +41,8 @@ declare const fullApi: ApiFromModules<{
   "functions/actions/queries": typeof functions_actions_queries;
   "functions/attributes/mutations": typeof functions_attributes_mutations;
   "functions/audit/queries": typeof functions_audit_queries;
+  "functions/auth/mutations": typeof functions_auth_mutations;
+  "functions/auth/queries": typeof functions_auth_queries;
   "functions/integrations/httpActions": typeof functions_integrations_httpActions;
   "functions/integrations/mutations": typeof functions_integrations_mutations;
   "functions/integrations/queries": typeof functions_integrations_queries;

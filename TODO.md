@@ -16,12 +16,17 @@
   - HTTP templates: reusable request configs with {{variable}} interpolation
   - auth via environment variables (bearer, basic, API key)
   - MCP tools: createWebhookEndpoint, listWebhookEndpoints, getWebhookLogs, createTemplate, listTemplates, sendRequest, getRequestLogs
+- remote HTTP MCP with StreamableHTTP transport
+- user management and authentication system
+  - users table decoupled from workspaces
+  - API key auth (`X-API-Key` header)
+  - OAuth 2.1 with pluggable providers (WorkOS, PropelAuth, Auth0, custom JWKS)
+  - workspace selection via `X-Workspace-Id` header
+  - MCP tools: users.me, users.updatePreferences, apiKeys.create, apiKeys.list, apiKeys.revoke
 
 ## High Priority
 
 ## Medium Priority
-- remote http mcp support
-- proper auth and user management
 
 ## Future
 - `records.merge` - deduplicate contacts/companies

@@ -40,59 +40,80 @@ This will:
 
 Keep this running in a terminal.
 
-### 3. Create a Workspace
+### 3. Configure MCP Server
 
-Once Convex is running, create your first workspace. In the Convex dashboard, go to **Functions** and run:
-
-```
-workspaces/mutations:create
-```
-
-With arguments:
-```json
-{
-  "name": "My Workspace",
-  "slug": "my-workspace",
-  "ownerUserId": "user_123",
-  "ownerEmail": "you@example.com"
-}
-```
-
-This seeds People, Companies, Deals object types with default attributes, plus Contacts and Deal Contacts lists.
-
-### 4. Configure MCP Server
-
-Create `.env` in the project root (or update existing):
+Create `.env` in the `mcp-server/` directory:
 
 ```bash
 CONVEX_URL=<your-convex-deployment-url>
+PORT=3000  # optional, defaults to 3000
 ```
 
 Find your deployment URL in the Convex dashboard or in `.env.local` after running `convex dev`.
 
-### 5. Run MCP Server
+### 4. Run MCP Server
 
 ```bash
 bun run dev:mcp
 ```
 
-## Using with Claude Desktop
+The HTTP MCP server will start on `http://localhost:3000/mcp`.
 
-Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+### 5. Create a User and Workspace
 
-```json
-{
-  "mcpServers": {
-    "massive-crm": {
-      "command": "bun",
-      "args": ["run", "/path/to/massive-crm/mcp-server/src/index.ts"],
-      "env": {
-        "CONVEX_URL": "https://your-deployment.convex.cloud"
-      }
-    }
-  }
-}
+The MCP server requires authentication. First, create a user via the Convex dashboard:
+
+1. Go to **Functions** → `auth/mutations:upsertFromOAuth`
+2. Run with your OAuth provider details, or for development:
+   ```json
+   {
+     "authProvider": "dev",
+     "authProviderId": "dev_user_1",
+     "email": "you@example.com",
+     "name": "Your Name"
+   }
+   ```
+
+3. Create an API key via `auth/mutations:createApiKey` (note the user ID from step 2)
+
+4. Use the API key to create a workspace via the MCP `workspace.create` tool
+
+## Authentication
+
+The MCP server supports two authentication methods:
+
+### API Key Authentication
+
+```bash
+curl -X POST http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: mcrm_<prefix>_<secret>" \
+  -H "X-Workspace-Id: <workspace_id>" \
+  -d '{"jsonrpc": "2.0", ...}'
 ```
+
+### OAuth Authentication
+
+Configure an OAuth provider (WorkOS, PropelAuth, Auth0, or custom JWKS):
+
+```bash
+# In .env
+MCP_AUTH_PROVIDER=workos
+WORKOS_CLIENT_ID=client_xxx
+```
+
+Then use Bearer tokens:
+
+```bash
+curl -X POST http://localhost:3000/mcp \
+  -H "Authorization: Bearer <jwt_token>" \
+  -H "X-Workspace-Id: <workspace_id>" \
+  -d '{"jsonrpc": "2.0", ...}'
+```
+
+## Using with MCP Clients
+
+The server exposes a standard MCP HTTP endpoint at `/mcp`. Connect using any MCP client that supports HTTP transport with authentication headers.
 
 ## MCP Tools
 
@@ -141,6 +162,26 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 | `actions.create` | Create automation with triggers, conditions, and steps |
 | `actions.list` | List available actions |
 | `actions.execute` | Run an action on a record |
+
+### Integrations
+| Tool | Description |
+|------|-------------|
+| `integrations.createWebhookEndpoint` | Create incoming webhook endpoint |
+| `integrations.listWebhookEndpoints` | List webhook endpoints |
+| `integrations.getWebhookLogs` | Get webhook request logs |
+| `integrations.createTemplate` | Create reusable HTTP request template |
+| `integrations.listTemplates` | List HTTP templates |
+| `integrations.sendRequest` | Send HTTP request |
+| `integrations.getRequestLogs` | Get outgoing request logs |
+
+### Users & API Keys
+| Tool | Description |
+|------|-------------|
+| `users.me` | Get current authenticated user info |
+| `users.updatePreferences` | Update user preferences |
+| `apiKeys.create` | Create new API key (secret shown once) |
+| `apiKeys.list` | List API keys (without secrets) |
+| `apiKeys.revoke` | Revoke an API key |
 
 ### Audit
 | Tool | Description |

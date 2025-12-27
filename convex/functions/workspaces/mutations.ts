@@ -5,10 +5,15 @@ export const create = mutation({
   args: {
     name: v.string(),
     slug: v.string(),
-    ownerUserId: v.string(),
-    ownerEmail: v.string(),
+    userId: v.id("users"), // User ID from users table
   },
   handler: async (ctx, args) => {
+    // Verify user exists
+    const user = await ctx.db.get(args.userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
     // Check for duplicate slug
     const existing = await ctx.db
       .query("workspaces")
@@ -33,8 +38,7 @@ export const create = mutation({
     // Create owner member
     const memberId = await ctx.db.insert("workspaceMembers", {
       workspaceId,
-      userId: args.ownerUserId,
-      email: args.ownerEmail,
+      userId: args.userId,
       role: "owner",
       createdAt: now,
       updatedAt: now,
@@ -369,8 +373,7 @@ async function seedSystemObjectTypes(
 export const addMember = mutation({
   args: {
     workspaceId: v.id("workspaces"),
-    userId: v.string(),
-    email: v.string(),
+    userId: v.id("users"),
     role: v.union(
       v.literal("admin"),
       v.literal("member"),
@@ -378,6 +381,12 @@ export const addMember = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    // Verify user exists
+    const user = await ctx.db.get(args.userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
     // Check if already a member
     const existing = await ctx.db
       .query("workspaceMembers")
@@ -395,7 +404,6 @@ export const addMember = mutation({
     const memberId = await ctx.db.insert("workspaceMembers", {
       workspaceId: args.workspaceId,
       userId: args.userId,
-      email: args.email,
       role: args.role,
       createdAt: now,
       updatedAt: now,
