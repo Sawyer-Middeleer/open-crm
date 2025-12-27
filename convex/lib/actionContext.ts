@@ -5,6 +5,7 @@
 export interface StepContext {
   workspaceId: string;
   actorId: string;
+  actionExecutionId?: string;
 
   // The record that triggered the action
   record: {
@@ -158,10 +159,12 @@ export function createInitialContext(args: {
   workspaceId: string;
   actorId: string;
   record: StepContext["record"];
+  actionExecutionId?: string;
 }): StepContext {
   return {
     workspaceId: args.workspaceId,
     actorId: args.actorId,
+    actionExecutionId: args.actionExecutionId,
     record: args.record,
     previousStepOutput: undefined,
     variables: {},

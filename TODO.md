@@ -10,11 +10,16 @@
 - `lists.create` tool - create custom list definitions via MCP
 - `actions.create` tool - define automations via MCP
 - action system execution (14 step types: field ops, record ops, list ops, webhooks, conditions, loops, MCP tool calls)
+- integrations system (incoming webhooks, outgoing HTTP, templates)
+  - incoming webhooks: POST to `/webhooks/{workspaceId}/{slug}` with HMAC-SHA256 signature verification
+  - outgoing HTTP: `sendWebhook` step now executes via scheduled action
+  - HTTP templates: reusable request configs with {{variable}} interpolation
+  - auth via environment variables (bearer, basic, API key)
+  - MCP tools: createWebhookEndpoint, listWebhookEndpoints, getWebhookLogs, createTemplate, listTemplates, sendRequest, getRequestLogs
 
 ## High Priority
 
 ## Medium Priority
-- support for integrations
 - remote http mcp support
 - proper auth and user management
 

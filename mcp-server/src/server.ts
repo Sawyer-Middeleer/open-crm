@@ -871,6 +871,246 @@ Variable interpolation: Use {{record.field}}, {{previous.output}}, {{loopItem}},
   );
 
   // ============================================================================
+  // INTEGRATION TOOLS
+  // ============================================================================
+
+  server.tool(
+    "integrations.createWebhookEndpoint",
+    `Create an incoming webhook endpoint that external services can POST to.
+Returns a URL and secret. The secret is only shown once - save it for signature verification.
+Handler types:
+- createRecord: Creates a new record using field mapping from payload
+- triggerAction: Triggers an action with the webhook payload as context`,
+    {
+      workspaceId: z.string().describe("Workspace ID"),
+      name: z.string().describe("Webhook name"),
+      slug: z.string().describe("URL slug (used in webhook URL path)"),
+      description: z.string().optional().describe("Webhook description"),
+      handlerType: z.enum(["createRecord", "triggerAction"]).describe("What to do with the webhook payload"),
+      objectType: z.string().optional().describe("Object type slug (for createRecord handler)"),
+      fieldMapping: z.record(z.string()).optional().describe("Map payload paths to field slugs, e.g. {'data.email': 'email'}"),
+      actionSlug: z.string().optional().describe("Action slug (for triggerAction handler)"),
+      actorId: z.string().describe("ID of the workspace member creating this"),
+    },
+    async (args) => {
+      const result = await convex.mutation(api.functions.integrations.mutations.createIncomingWebhook, {
+        workspaceId: args.workspaceId as any,
+        name: args.name,
+        slug: args.slug,
+        description: args.description,
+        handler: {
+          type: args.handlerType,
+          objectType: args.objectType,
+          fieldMapping: args.fieldMapping,
+          actionSlug: args.actionSlug,
+        },
+        actorId: args.actorId as any,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  server.tool(
+    "integrations.listWebhookEndpoints",
+    "List all incoming webhook endpoints for a workspace",
+    {
+      workspaceId: z.string().describe("Workspace ID"),
+      includeInactive: z.boolean().optional().describe("Include disabled webhooks"),
+    },
+    async ({ workspaceId, includeInactive }) => {
+      const result = await convex.query(api.functions.integrations.queries.listIncomingWebhooks, {
+        workspaceId: workspaceId as any,
+        includeInactive,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  server.tool(
+    "integrations.getWebhookLogs",
+    "Get logs of received webhook requests",
+    {
+      workspaceId: z.string().describe("Workspace ID"),
+      webhookId: z.string().optional().describe("Filter by specific webhook ID"),
+      limit: z.number().optional().describe("Maximum number of logs to return (default 50)"),
+    },
+    async ({ workspaceId, webhookId, limit }) => {
+      const result = await convex.query(api.functions.integrations.queries.getWebhookLogs, {
+        workspaceId: workspaceId as any,
+        webhookId: webhookId as any,
+        limit,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  server.tool(
+    "integrations.createTemplate",
+    `Create a reusable HTTP request template.
+Templates can use {{variable}} placeholders in URL, headers, and body.
+Auth credentials are stored as environment variable NAMES (not values).`,
+    {
+      workspaceId: z.string().describe("Workspace ID"),
+      name: z.string().describe("Template name"),
+      slug: z.string().describe("Unique template slug"),
+      description: z.string().optional().describe("Template description"),
+      method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).describe("HTTP method"),
+      url: z.string().describe("Request URL (can include {{variable}} placeholders)"),
+      headers: z.record(z.string()).optional().describe("Request headers"),
+      body: z.any().optional().describe("Request body (can include {{variable}} placeholders)"),
+      auth: z.object({
+        type: z.enum(["none", "bearer", "basic", "apiKey"]).describe("Auth type"),
+        tokenEnvVar: z.string().optional().describe("Env var name containing bearer token"),
+        usernameEnvVar: z.string().optional().describe("Env var name containing username"),
+        passwordEnvVar: z.string().optional().describe("Env var name containing password"),
+        headerName: z.string().optional().describe("Header name for API key (default: X-API-Key)"),
+        keyEnvVar: z.string().optional().describe("Env var name containing API key"),
+      }).optional().describe("Authentication configuration"),
+      actorId: z.string().describe("ID of the workspace member creating this"),
+    },
+    async (args) => {
+      const result = await convex.mutation(api.functions.integrations.mutations.createHttpTemplate, {
+        workspaceId: args.workspaceId as any,
+        name: args.name,
+        slug: args.slug,
+        description: args.description,
+        method: args.method,
+        url: args.url,
+        headers: args.headers,
+        body: args.body,
+        auth: args.auth,
+        actorId: args.actorId as any,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  server.tool(
+    "integrations.listTemplates",
+    "List all HTTP request templates for a workspace",
+    {
+      workspaceId: z.string().describe("Workspace ID"),
+    },
+    async ({ workspaceId }) => {
+      const result = await convex.query(api.functions.integrations.queries.listHttpTemplates, {
+        workspaceId: workspaceId as any,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  server.tool(
+    "integrations.sendRequest",
+    `Send an HTTP request directly or using a template.
+Use either url/method/headers/body for ad-hoc requests, or templateSlug with variables.`,
+    {
+      workspaceId: z.string().describe("Workspace ID"),
+      method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).optional().describe("HTTP method (if not using template)"),
+      url: z.string().optional().describe("Request URL (if not using template)"),
+      headers: z.record(z.string()).optional().describe("Request headers"),
+      body: z.any().optional().describe("Request body"),
+      authConfig: z.object({
+        type: z.string(),
+        tokenEnvVar: z.string().optional(),
+        usernameEnvVar: z.string().optional(),
+        passwordEnvVar: z.string().optional(),
+        headerName: z.string().optional(),
+        keyEnvVar: z.string().optional(),
+      }).optional().describe("Auth config (if not using template)"),
+      actorId: z.string().describe("ID of the workspace member"),
+    },
+    async (args) => {
+      if (!args.url || !args.method) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: "Either url+method or templateSlug is required" }, null, 2),
+            },
+          ],
+        };
+      }
+      const result = await convex.action(api.functions.integrations.httpActions.sendRequest, {
+        workspaceId: args.workspaceId as any,
+        method: args.method,
+        url: args.url,
+        headers: args.headers,
+        body: args.body,
+        authConfig: args.authConfig,
+        actorId: args.actorId as any,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  server.tool(
+    "integrations.getRequestLogs",
+    "Get logs of outgoing HTTP requests",
+    {
+      workspaceId: z.string().describe("Workspace ID"),
+      templateId: z.string().optional().describe("Filter by template ID"),
+      limit: z.number().optional().describe("Maximum number of logs to return (default 50)"),
+    },
+    async ({ workspaceId, templateId, limit }) => {
+      const result = await convex.query(api.functions.integrations.queries.getHttpRequestLogs, {
+        workspaceId: workspaceId as any,
+        templateId: templateId as any,
+        limit,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  // ============================================================================
   // START SERVER
   // ============================================================================
 

@@ -471,6 +471,149 @@ const webhookEndpoints = defineTable({
   .index("by_workspace", ["workspaceId"])
   .index("by_workspace_active", ["workspaceId", "isActive"]);
 
+// Incoming webhook endpoints (external services POST to these)
+const incomingWebhooks = defineTable({
+  workspaceId: v.id("workspaces"),
+  name: v.string(),
+  slug: v.string(), // URL path: /webhooks/{workspaceId}/{slug}
+  description: v.optional(v.string()),
+  secret: v.string(), // For HMAC signature verification
+  isActive: v.boolean(),
+
+  // Handler configuration
+  handler: v.object({
+    type: v.union(
+      v.literal("createRecord"),
+      v.literal("triggerAction")
+    ),
+    // For createRecord
+    objectTypeId: v.optional(v.id("objectTypes")),
+    fieldMapping: v.optional(v.any()), // Map payload paths to record fields
+    // For triggerAction
+    actionId: v.optional(v.id("actions")),
+  }),
+
+  // Stats
+  lastReceivedAt: v.optional(v.number()),
+  totalReceived: v.number(),
+
+  createdAt: v.number(),
+  updatedAt: v.number(),
+})
+  .index("by_workspace", ["workspaceId"])
+  .index("by_workspace_slug", ["workspaceId", "slug"])
+  .index("by_workspace_active", ["workspaceId", "isActive"]);
+
+// Log of received webhook requests
+const webhookLogs = defineTable({
+  workspaceId: v.id("workspaces"),
+  webhookId: v.id("incomingWebhooks"),
+  receivedAt: v.number(),
+
+  // Request details
+  headers: v.optional(v.any()), // Relevant headers (sanitized)
+  payload: v.optional(v.any()), // Request body
+  sourceIp: v.optional(v.string()),
+
+  // Processing result
+  status: v.union(
+    v.literal("success"),
+    v.literal("failed"),
+    v.literal("invalid_signature"),
+    v.literal("inactive")
+  ),
+  error: v.optional(v.string()),
+
+  // What was created/triggered
+  createdRecordId: v.optional(v.id("records")),
+  triggeredActionId: v.optional(v.id("actions")),
+  actionExecutionId: v.optional(v.id("actionExecutions")),
+})
+  .index("by_webhook", ["webhookId"])
+  .index("by_workspace", ["workspaceId"])
+  .index("by_workspace_received", ["workspaceId", "receivedAt"]);
+
+// Reusable HTTP request templates
+const httpTemplates = defineTable({
+  workspaceId: v.id("workspaces"),
+  name: v.string(),
+  slug: v.string(),
+  description: v.optional(v.string()),
+
+  // Request configuration
+  method: v.union(
+    v.literal("GET"),
+    v.literal("POST"),
+    v.literal("PUT"),
+    v.literal("PATCH"),
+    v.literal("DELETE")
+  ),
+  url: v.string(), // Can contain {{variable}} placeholders
+  headers: v.optional(v.any()), // Header key-value pairs
+  body: v.optional(v.any()), // Body template
+
+  // Auth configuration (references env var names, not actual values)
+  auth: v.optional(
+    v.object({
+      type: v.union(
+        v.literal("none"),
+        v.literal("bearer"),
+        v.literal("basic"),
+        v.literal("apiKey")
+      ),
+      tokenEnvVar: v.optional(v.string()), // For bearer: ENV_VAR_NAME
+      usernameEnvVar: v.optional(v.string()), // For basic auth
+      passwordEnvVar: v.optional(v.string()), // For basic auth
+      headerName: v.optional(v.string()), // For apiKey: which header
+      keyEnvVar: v.optional(v.string()), // For apiKey: ENV_VAR_NAME
+    })
+  ),
+
+  // Response handling
+  expectedStatusCodes: v.optional(v.array(v.number())),
+
+  createdAt: v.number(),
+  updatedAt: v.number(),
+})
+  .index("by_workspace", ["workspaceId"])
+  .index("by_workspace_slug", ["workspaceId", "slug"]);
+
+// Log of outgoing HTTP requests
+const httpRequestLogs = defineTable({
+  workspaceId: v.id("workspaces"),
+
+  // Source context
+  templateId: v.optional(v.id("httpTemplates")),
+  actionExecutionId: v.optional(v.id("actionExecutions")),
+  stepId: v.optional(v.string()),
+
+  // Request details
+  method: v.string(),
+  url: v.string(),
+  requestHeaders: v.optional(v.any()), // Sanitized (no auth tokens)
+  requestBody: v.optional(v.any()),
+
+  // Response
+  status: v.union(
+    v.literal("success"),
+    v.literal("failed"),
+    v.literal("timeout")
+  ),
+  statusCode: v.optional(v.number()),
+  responseHeaders: v.optional(v.any()),
+  responseBody: v.optional(v.any()),
+  error: v.optional(v.string()),
+
+  // Timing
+  sentAt: v.number(),
+  completedAt: v.optional(v.number()),
+  durationMs: v.optional(v.number()),
+})
+  .index("by_workspace", ["workspaceId"])
+  .index("by_template", ["templateId"])
+  .index("by_action_execution", ["actionExecutionId"])
+  .index("by_workspace_sent", ["workspaceId", "sentAt"]);
+
 // ============================================================================
 // VIEWS & SAVED FILTERS
 // ============================================================================
@@ -554,6 +697,12 @@ export default defineSchema({
   // API & Webhooks
   apiKeys,
   webhookEndpoints,
+
+  // Integrations
+  incomingWebhooks,
+  webhookLogs,
+  httpTemplates,
+  httpRequestLogs,
 
   // Views
   views,

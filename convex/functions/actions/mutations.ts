@@ -1,4 +1,5 @@
 import { mutation } from "../../_generated/server";
+import { internal } from "../../_generated/api";
 import { v } from "convex/values";
 import { createAuditLog } from "../../lib/audit";
 import type { StepContext } from "../../lib/actionContext";
@@ -63,6 +64,7 @@ export const execute = mutation({
         workspaceId: args.workspaceId,
         actorId: args.actorId,
         record,
+        actionExecutionId: executionId,
       });
 
       // Execute each step
@@ -724,23 +726,46 @@ async function executeStep(
       // EXTERNAL
       // ========================================
       case "sendWebhook": {
-        // Note: Real HTTP calls require Convex actions (not mutations)
-        // This logs the intent; actual HTTP is done via httpActions.ts
-        const { url, method, headers, body } = config as {
-          url: string;
-          method: string;
+        // Schedule HTTP action to send the webhook
+        const { url, method, headers, body, templateSlug, variables, authConfig } = config as {
+          url?: string;
+          method?: string;
           headers?: Record<string, string>;
           body?: unknown;
+          templateSlug?: string;
+          variables?: Record<string, unknown>;
+          authConfig?: {
+            type: string;
+            tokenEnvVar?: string;
+            usernameEnvVar?: string;
+            passwordEnvVar?: string;
+            headerName?: string;
+            keyEnvVar?: string;
+          };
         };
 
-        // For now, queue the webhook (future: call HTTP action)
+        // Schedule the HTTP action (runs immediately after mutation completes)
+        await ctx.scheduler.runAfter(
+          0,
+          internal.functions.integrations.httpActions.sendHttpRequest,
+          {
+            workspaceId: context.workspaceId,
+            method: method ?? "POST",
+            url: url ?? "",
+            headers,
+            body,
+            authConfig,
+            actionExecutionId: context.actionExecutionId,
+            stepId: step.id,
+          }
+        );
+
         return success(startedAt, {
-          queued: true,
+          scheduled: true,
           url,
-          method,
-          headers,
-          body,
-          message: "Webhook queued for delivery",
+          method: method ?? "POST",
+          templateSlug,
+          message: "HTTP request scheduled for execution",
         });
       }
 
