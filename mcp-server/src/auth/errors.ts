@@ -21,10 +21,10 @@ export function buildWwwAuthenticateHeader(resourceUri?: string): string {
   // Bearer scheme for OAuth
   if (resourceUri) {
     parts.push(
-      `Bearer realm="Massive CRM", resource_metadata="${resourceUri}/.well-known/oauth-protected-resource"`
+      `Bearer realm="Agent CRM", resource_metadata="${resourceUri}/.well-known/oauth-protected-resource"`
     );
   } else {
-    parts.push('Bearer realm="Massive CRM"');
+    parts.push('Bearer realm="Agent CRM"');
   }
 
   // API Key scheme

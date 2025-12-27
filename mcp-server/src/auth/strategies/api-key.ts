@@ -8,7 +8,7 @@ const API_KEY_HEADER = "x-api-key";
 
 /**
  * API Key authentication provider
- * Key format: mcrm_<prefix>_<secret>
+ * Key format: crm_<prefix>_<secret>
  */
 export class ApiKeyProvider implements AuthProvider {
   readonly name = "api-key";
@@ -27,13 +27,13 @@ export class ApiKeyProvider implements AuthProvider {
       return null; // No API key, let other providers try
     }
 
-    // Parse key: mcrm_<prefix>_<secret>
+    // Parse key: crm_<prefix>_<secret>
     const parts = apiKey.split("_");
-    if (parts.length !== 3 || parts[0] !== "mcrm") {
+    if (parts.length !== 3 || parts[0] !== "crm") {
       throw new AuthError("Invalid API key format", 401, this.name);
     }
 
-    const keyPrefix = `mcrm_${parts[1]}`;
+    const keyPrefix = `crm_${parts[1]}`;
     const secret = parts[2];
 
     // Hash the secret

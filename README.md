@@ -1,4 +1,4 @@
-# Massive CRM
+# Agent CRM
 
 A headless, MCP-first CRM
 
@@ -87,7 +87,7 @@ The MCP server supports two authentication methods:
 ```bash
 curl -X POST http://localhost:3000/mcp \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: mcrm_<prefix>_<secret>" \
+  -H "X-API-Key: crm_<prefix>_<secret>" \
   -H "X-Workspace-Id: <workspace_id>" \
   -d '{"jsonrpc": "2.0", ...}'
 ```

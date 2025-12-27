@@ -29,7 +29,7 @@ function getAuthContext(extra: unknown): AuthContextFromExtra {
 
 export function createServer() {
   const server = new McpServer({
-    name: "massive-crm",
+    name: "agent-crm",
     version: "0.1.0",
   });
 

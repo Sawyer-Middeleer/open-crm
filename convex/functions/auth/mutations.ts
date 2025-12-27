@@ -164,10 +164,10 @@ export const createApiKey = mutation({
     const now = Date.now();
 
     // Generate key components
-    // Format: mcrm_<prefix>_<secret>
+    // Format: crm_<prefix>_<secret>
     const prefix = generateRandomString(8);
     const secret = generateRandomString(32);
-    const fullKey = `mcrm_${prefix}_${secret}`;
+    const fullKey = `crm_${prefix}_${secret}`;
 
     // Hash the secret for storage
     const keyHash = await hashString(secret);

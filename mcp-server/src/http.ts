@@ -21,7 +21,7 @@ const sessionTransportMap = new Map<
  */
 function handleWellKnown(resourceUri?: string): Response {
   const metadata = {
-    resource: resourceUri ?? "https://api.massive-crm.example/mcp",
+    resource: resourceUri ?? "https://api.agent-crm.example/mcp",
     bearer_methods_supported: ["header"],
     resource_signing_alg_values_supported: ["RS256", "ES256"],
   };

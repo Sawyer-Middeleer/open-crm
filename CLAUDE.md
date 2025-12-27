@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Massive CRM is a headless, MCP-first CRM built with Convex and Bun. It has no UI - all interactions happen via the Model Context Protocol (MCP).
+Agent CRM is a headless, MCP-first CRM built with Convex and Bun. It has no UI - all interactions happen via the Model Context Protocol (MCP).
 
 ## Commands
 
@@ -148,7 +148,7 @@ PROPELAUTH_AUTH_URL=https://xxx.propelauthtest.com
 # Auth0
 MCP_AUTH_PROVIDER=auth0
 AUTH0_DOMAIN=your-tenant.auth0.com
-AUTH0_AUDIENCE=https://api.massive-crm.example
+AUTH0_AUDIENCE=https://api.agent-crm.example
 
 # Custom JWKS
 MCP_AUTH_PROVIDER=custom
@@ -160,7 +160,7 @@ OAUTH_JWKS_URI=https://your-idp.com/.well-known/jwks.json
 
 The MCP server uses HTTP transport with pluggable authentication:
 
-**API Key auth**: `X-API-Key: mcrm_<prefix>_<secret>` + `X-Workspace-Id` header
+**API Key auth**: `X-API-Key: crm_<prefix>_<secret>` + `X-Workspace-Id` header
 
 **OAuth auth**: `Authorization: Bearer <jwt>` + `X-Workspace-Id` header
 
