@@ -2,6 +2,7 @@ import { mutation } from "../../_generated/server";
 import { v } from "convex/values";
 import { createAuditLog, computeChanges } from "../../lib/audit";
 import { assertActorInWorkspace } from "../../lib/auth";
+import { evaluateTriggers } from "../../lib/triggers";
 
 export const create = mutation({
   args: {
@@ -66,6 +67,16 @@ export const create = mutation({
       actorId: args.actorId,
       actorType: "user",
       metadata: { source: "api" },
+    });
+
+    // Evaluate onCreate triggers
+    await evaluateTriggers(ctx, {
+      workspaceId: args.workspaceId,
+      triggerType: "onCreate",
+      objectTypeId: objectType._id,
+      recordId,
+      actorId: args.actorId,
+      newData: args.data,
     });
 
     const record = await ctx.db.get(recordId);
@@ -139,6 +150,33 @@ export const update = mutation({
       metadata: { source: "api" },
     });
 
+    // Evaluate onUpdate triggers
+    const changedFields = changes.map((c) => c.field);
+    await evaluateTriggers(ctx, {
+      workspaceId: args.workspaceId,
+      triggerType: "onUpdate",
+      objectTypeId: existing.objectTypeId,
+      recordId: args.recordId,
+      actorId: args.actorId,
+      oldData: existing.data,
+      newData,
+      changedFields,
+    });
+
+    // Evaluate onFieldChange triggers if any fields changed
+    if (changedFields.length > 0) {
+      await evaluateTriggers(ctx, {
+        workspaceId: args.workspaceId,
+        triggerType: "onFieldChange",
+        objectTypeId: existing.objectTypeId,
+        recordId: args.recordId,
+        actorId: args.actorId,
+        oldData: existing.data,
+        newData,
+        changedFields,
+      });
+    }
+
     const record = await ctx.db.get(args.recordId);
 
     return {
@@ -180,6 +218,16 @@ export const remove = mutation({
       actorId: args.actorId,
       actorType: "user",
       metadata: { source: "api" },
+    });
+
+    // Evaluate onDelete triggers before deletion
+    await evaluateTriggers(ctx, {
+      workspaceId: args.workspaceId,
+      triggerType: "onDelete",
+      objectTypeId: existing.objectTypeId,
+      recordId: args.recordId,
+      actorId: args.actorId,
+      oldData: existing.data,
     });
 
     // Delete list entries for this record
@@ -578,6 +626,16 @@ export const bulkCommit = mutation({
           actorId: args.actorId,
           actorType: "user",
           metadata: { source: "bulk_import" },
+        });
+
+        // Evaluate onCreate triggers for each record
+        await evaluateTriggers(ctx, {
+          workspaceId: args.workspaceId,
+          triggerType: "onCreate",
+          objectTypeId: session.objectTypeId,
+          recordId,
+          actorId: args.actorId,
+          newData: record.data as Record<string, unknown>,
         });
       } catch (error) {
         failures.push({

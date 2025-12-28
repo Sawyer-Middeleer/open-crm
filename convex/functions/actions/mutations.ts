@@ -1012,6 +1012,10 @@ export const create = mutation({
       isSystem: false,
       createdAt: now,
       updatedAt: now,
+      // Denormalized trigger fields for efficient indexing
+      triggerType: args.trigger.type,
+      triggerObjectTypeId: args.trigger.objectTypeId,
+      triggerListId: args.trigger.listId,
     });
 
     // Check for duplicate slugs after insert
@@ -1079,6 +1083,23 @@ export const createWithSlugs = mutation({
       list: v.optional(v.string()), // slug
       watchedFields: v.optional(v.array(v.string())),
       schedule: v.optional(v.string()),
+      filterConditions: v.optional(
+        v.array(
+          v.object({
+            field: v.string(),
+            operator: v.union(
+              v.literal("equals"),
+              v.literal("notEquals"),
+              v.literal("contains"),
+              v.literal("greaterThan"),
+              v.literal("lessThan"),
+              v.literal("isEmpty"),
+              v.literal("isNotEmpty")
+            ),
+            value: v.optional(v.any()),
+          })
+        )
+      ),
     }),
     conditions: v.optional(
       v.array(
@@ -1180,6 +1201,7 @@ export const createWithSlugs = mutation({
         listId: listId as never,
         watchedFields: args.trigger.watchedFields,
         schedule: args.trigger.schedule,
+        filterConditions: args.trigger.filterConditions as never,
       },
       conditions: args.conditions as never,
       steps: args.steps as never,
@@ -1187,6 +1209,10 @@ export const createWithSlugs = mutation({
       isSystem: false,
       createdAt: now,
       updatedAt: now,
+      // Denormalized trigger fields for efficient indexing
+      triggerType: args.trigger.type,
+      triggerObjectTypeId: objectTypeId as never,
+      triggerListId: listId as never,
     });
 
     await createAuditLog(ctx, {

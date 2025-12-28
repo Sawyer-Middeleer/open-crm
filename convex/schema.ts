@@ -385,6 +385,24 @@ const actions = defineTable({
     listId: v.optional(v.id("lists")),
     watchedFields: v.optional(v.array(v.string())),
     schedule: v.optional(v.string()),
+    // Filter conditions for scheduled actions to find target records
+    filterConditions: v.optional(
+      v.array(
+        v.object({
+          field: v.string(),
+          operator: v.union(
+            v.literal("equals"),
+            v.literal("notEquals"),
+            v.literal("contains"),
+            v.literal("greaterThan"),
+            v.literal("lessThan"),
+            v.literal("isEmpty"),
+            v.literal("isNotEmpty")
+          ),
+          value: v.optional(v.any()),
+        })
+      )
+    ),
   }),
   conditions: v.optional(
     v.array(
@@ -421,10 +439,26 @@ const actions = defineTable({
   isSystem: v.boolean(),
   createdAt: v.number(),
   updatedAt: v.number(),
+  // Denormalized trigger fields for efficient indexing
+  triggerType: v.union(
+    v.literal("manual"),
+    v.literal("onCreate"),
+    v.literal("onUpdate"),
+    v.literal("onDelete"),
+    v.literal("onFieldChange"),
+    v.literal("onListAdd"),
+    v.literal("onListRemove"),
+    v.literal("scheduled")
+  ),
+  triggerObjectTypeId: v.optional(v.id("objectTypes")),
+  triggerListId: v.optional(v.id("lists")),
 })
   .index("by_workspace", ["workspaceId"])
   .index("by_workspace_slug", ["workspaceId", "slug"])
-  .index("by_workspace_active", ["workspaceId", "isActive"]);
+  .index("by_workspace_active", ["workspaceId", "isActive"])
+  .index("by_trigger_object", ["workspaceId", "isActive", "triggerType", "triggerObjectTypeId"])
+  .index("by_trigger_list", ["workspaceId", "isActive", "triggerType", "triggerListId"])
+  .index("by_scheduled", ["isActive", "triggerType"]);
 
 const actionExecutions = defineTable({
   workspaceId: v.id("workspaces"),

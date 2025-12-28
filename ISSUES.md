@@ -66,6 +66,16 @@ This document contains all issues identified during a comprehensive code review 
 
 ### 30. ~~No Validation of Cron Schedule Format~~ ✅ FIXED
 
+### 30b. ~~Action Triggers Not Fully Implemented~~ ✅ FIXED
+
+Lifecycle triggers (`onCreate`, `onUpdate`, `onDelete`, `onFieldChange`, `onListAdd`, `onListRemove`) and scheduled triggers were defined in schema but had no execution path. Fixed by:
+- Adding `convex/lib/triggers.ts` - trigger evaluation helper
+- Adding `convex/lib/cron.ts` - cron expression parser
+- Adding `convex/functions/actions/scheduled.ts` - scheduled action executor
+- Adding `convex/crons.ts` - runs every minute to check scheduled actions
+- Adding trigger hooks to record and list mutations
+- Adding denormalized trigger fields + indexes for efficient queries
+
 ---
 
 ## Simplification Analysis

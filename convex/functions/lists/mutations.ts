@@ -2,6 +2,7 @@ import { mutation } from "../../_generated/server";
 import { v } from "convex/values";
 import { createAuditLog } from "../../lib/audit";
 import { assertActorInWorkspace } from "../../lib/auth";
+import { evaluateTriggers } from "../../lib/triggers";
 
 const attributeTypeValidator = v.union(
   v.literal("text"),
@@ -254,6 +255,16 @@ export const addEntry = mutation({
       actorType: "user",
     });
 
+    // Evaluate onListAdd triggers
+    await evaluateTriggers(ctx, {
+      workspaceId: args.workspaceId,
+      triggerType: "onListAdd",
+      listId: list._id,
+      recordId: args.recordId,
+      actorId: args.actorId,
+      newData: args.data ?? {},
+    });
+
     const entry = await ctx.db.get(entryId);
 
     return { entryId, entry };
@@ -355,6 +366,16 @@ export const removeEntry = mutation({
       beforeSnapshot: entry.data,
       actorId: args.actorId,
       actorType: "user",
+    });
+
+    // Evaluate onListRemove triggers before deletion
+    await evaluateTriggers(ctx, {
+      workspaceId: args.workspaceId,
+      triggerType: "onListRemove",
+      listId: list._id,
+      recordId: args.recordId,
+      actorId: args.actorId,
+      oldData: entry.data,
     });
 
     await ctx.db.delete(entry._id);

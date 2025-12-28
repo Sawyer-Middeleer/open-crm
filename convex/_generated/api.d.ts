@@ -8,8 +8,10 @@
  * @module
  */
 
+import type * as crons from "../crons.js";
 import type * as functions_actions_mutations from "../functions/actions/mutations.js";
 import type * as functions_actions_queries from "../functions/actions/queries.js";
+import type * as functions_actions_scheduled from "../functions/actions/scheduled.js";
 import type * as functions_attributes_mutations from "../functions/attributes/mutations.js";
 import type * as functions_audit_queries from "../functions/audit/queries.js";
 import type * as functions_auth_mutations from "../functions/auth/mutations.js";
@@ -30,6 +32,8 @@ import type * as http from "../http.js";
 import type * as lib_actionContext from "../lib/actionContext.js";
 import type * as lib_audit from "../lib/audit.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_cron from "../lib/cron.js";
+import type * as lib_triggers from "../lib/triggers.js";
 import type * as lib_urlValidation from "../lib/urlValidation.js";
 import type * as lib_validation from "../lib/validation.js";
 
@@ -40,8 +44,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  crons: typeof crons;
   "functions/actions/mutations": typeof functions_actions_mutations;
   "functions/actions/queries": typeof functions_actions_queries;
+  "functions/actions/scheduled": typeof functions_actions_scheduled;
   "functions/attributes/mutations": typeof functions_attributes_mutations;
   "functions/audit/queries": typeof functions_audit_queries;
   "functions/auth/mutations": typeof functions_auth_mutations;
@@ -62,6 +68,8 @@ declare const fullApi: ApiFromModules<{
   "lib/actionContext": typeof lib_actionContext;
   "lib/audit": typeof lib_audit;
   "lib/auth": typeof lib_auth;
+  "lib/cron": typeof lib_cron;
+  "lib/triggers": typeof lib_triggers;
   "lib/urlValidation": typeof lib_urlValidation;
   "lib/validation": typeof lib_validation;
 }>;
