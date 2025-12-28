@@ -108,7 +108,7 @@ describe("HTTP Server Integration", () => {
       const response = await fetch(`${BASE_URL}/health`);
       expect(response.status).toBe(200);
 
-      const body = await response.json();
+      const body = (await response.json()) as { status: string; timestamp: string };
       expect(body.status).toBe("ok");
       expect(body.timestamp).toBeDefined();
     });
@@ -123,7 +123,7 @@ describe("HTTP Server Integration", () => {
       expect(response.headers.get("content-type")).toContain("application/json");
       expect(response.headers.get("cache-control")).toContain("max-age");
 
-      const body = await response.json();
+      const body = (await response.json()) as { resource: string; bearer_methods_supported: string[] };
       expect(body.resource).toBeDefined();
       expect(body.bearer_methods_supported).toContain("header");
     });
@@ -166,7 +166,7 @@ describe("HTTP Server Integration", () => {
       });
 
       expect(response.status).toBe(401);
-      const body = await response.json();
+      const body = (await response.json()) as { error: string };
       expect(body.error).toBe("unauthorized");
     });
 
@@ -177,7 +177,7 @@ describe("HTTP Server Integration", () => {
       });
 
       expect(response.status).toBe(401);
-      const body = await response.json();
+      const body = (await response.json()) as { message: string };
       expect(body.message).toContain("Invalid");
     });
 
@@ -197,7 +197,7 @@ describe("HTTP Server Integration", () => {
       const response = await fetch(`${BASE_URL}/unknown/path`);
 
       expect(response.status).toBe(404);
-      const body = await response.json();
+      const body = (await response.json()) as { error: string; path: string };
       expect(body.error).toBe("Not found");
       expect(body.path).toBe("/unknown/path");
     });

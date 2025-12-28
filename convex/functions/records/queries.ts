@@ -1,4 +1,5 @@
 import { query } from "../../_generated/server";
+import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { assertActorInWorkspace } from "../../lib/auth";
 
@@ -38,8 +39,7 @@ export const list = query({
   args: {
     workspaceId: v.id("workspaces"),
     objectTypeSlug: v.string(),
-    limit: v.optional(v.number()),
-    cursor: v.optional(v.string()),
+    paginationOpts: paginationOptsValidator,
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
@@ -58,24 +58,19 @@ export const list = query({
       throw new Error(`Object type '${args.objectTypeSlug}' not found`);
     }
 
-    const limit = args.limit ?? 50;
-
-    // Query records
-    const records = await ctx.db
+    // Query records with proper cursor-based pagination
+    const results = await ctx.db
       .query("records")
       .withIndex("by_workspace_object_type", (q) =>
         q.eq("workspaceId", args.workspaceId).eq("objectTypeId", objectType._id)
       )
       .order("desc")
-      .take(limit + 1);
-
-    const hasMore = records.length > limit;
-    const items = hasMore ? records.slice(0, limit) : records;
+      .paginate(args.paginationOpts);
 
     return {
-      items,
-      hasMore,
-      cursor: hasMore ? items[items.length - 1]?._id : undefined,
+      page: results.page,
+      isDone: results.isDone,
+      continueCursor: results.continueCursor,
       objectType: {
         name: objectType.name,
         slug: objectType.slug,
@@ -159,6 +154,52 @@ function matchesFilter(data: Record<string, unknown>, filter: Filter): boolean {
   }
 }
 
+// Helper to check if a record matches filters
+function matchesFilters(
+  record: { data: unknown },
+  filters: Array<{ field: string; operator: FilterOperator; value?: unknown }>
+): boolean {
+  if (!filters || filters.length === 0) return true;
+  return filters.every((filter) =>
+    matchesFilter(record.data as Record<string, unknown>, filter as Filter)
+  );
+}
+
+// Helper to check if a record matches text query
+function matchesTextQuery(
+  record: { displayName?: string | null; data: unknown },
+  queryText: string
+): boolean {
+  const queryLower = queryText.toLowerCase();
+
+  // Search in displayName
+  if (record.displayName?.toLowerCase().includes(queryLower)) {
+    return true;
+  }
+
+  // Search in all text fields
+  const data = record.data as Record<string, unknown>;
+  for (const value of Object.values(data)) {
+    if (typeof value === "string" && value.toLowerCase().includes(queryLower)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Type for record from database
+type RecordDoc = {
+  _id: string;
+  _creationTime: number;
+  workspaceId: string;
+  objectTypeId: string;
+  displayName?: string | null;
+  data: unknown;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export const search = query({
   args: {
     workspaceId: v.id("workspaces"),
@@ -175,14 +216,17 @@ export const search = query({
     query: v.optional(v.string()), // text search on displayName
     sortBy: v.optional(v.string()),
     sortOrder: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
-    limit: v.optional(v.number()),
+    paginationOpts: paginationOptsValidator,
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
     // Verify the actor has access to this workspace
     await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
 
-    const limit = args.limit ?? 50;
+    // Safety limits to prevent OOM
+    const MAX_SCAN_LIMIT = 10000; // Max records to scan
+    const CHUNK_SIZE = 100; // Records per chunk
+    const pageSize = args.paginationOpts.numItems ?? 50;
 
     // 1. Get object type if specified
     let objectTypeId: string | undefined;
@@ -201,59 +245,63 @@ export const search = query({
       }
     }
 
-    // 2. Fetch records by workspace (and optionally objectType)
-    let records;
-    if (objectTypeId) {
-      records = await ctx.db
-        .query("records")
-        .withIndex("by_workspace_object_type", (q) =>
-          q
-            .eq("workspaceId", args.workspaceId)
-            .eq("objectTypeId", objectTypeId as never)
-        )
-        .collect();
-    } else {
-      records = await ctx.db
-        .query("records")
-        .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
-        .collect();
-    }
+    // 2. Fetch records in chunks with filtering
+    const results: RecordDoc[] = [];
+    let scanned = 0;
+    let cursor = args.paginationOpts.cursor;
+    let isDone = false;
+    const hasFilters = (args.filters && args.filters.length > 0) || args.query;
 
-    // 3. Apply filters in memory
-    if (args.filters && args.filters.length > 0) {
-      records = records.filter((record) => {
-        return args.filters!.every((filter) =>
-          matchesFilter(record.data as Record<string, unknown>, filter as Filter)
-        );
-      });
-    }
+    // Fetch chunks until we have enough results or hit limits
+    while (results.length < pageSize && scanned < MAX_SCAN_LIMIT && !isDone) {
+      // Build the query based on whether we have objectTypeId
+      let chunk;
+      if (objectTypeId) {
+        chunk = await ctx.db
+          .query("records")
+          .withIndex("by_workspace_object_type", (q) =>
+            q
+              .eq("workspaceId", args.workspaceId)
+              .eq("objectTypeId", objectTypeId as never)
+          )
+          .paginate({ numItems: CHUNK_SIZE, cursor });
+      } else {
+        chunk = await ctx.db
+          .query("records")
+          .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
+          .paginate({ numItems: CHUNK_SIZE, cursor });
+      }
 
-    // 4. Apply text search if query provided
-    if (args.query) {
-      const queryLower = args.query.toLowerCase();
-      records = records.filter((record) => {
-        // Search in displayName
-        if (record.displayName?.toLowerCase().includes(queryLower)) {
-          return true;
-        }
-        // Search in all text fields
-        const data = record.data as Record<string, unknown>;
-        for (const value of Object.values(data)) {
-          if (
-            typeof value === "string" &&
-            value.toLowerCase().includes(queryLower)
-          ) {
-            return true;
+      // Filter this chunk in memory
+      for (const record of chunk.page) {
+        const recordDoc = record as unknown as RecordDoc;
+
+        // Apply filters
+        if (args.filters && args.filters.length > 0) {
+          if (!matchesFilters(recordDoc, args.filters as Array<{ field: string; operator: FilterOperator; value?: unknown }>)) {
+            continue;
           }
         }
-        return false;
-      });
+
+        // Apply text search
+        if (args.query) {
+          if (!matchesTextQuery(recordDoc, args.query)) {
+            continue;
+          }
+        }
+
+        results.push(recordDoc);
+      }
+
+      scanned += chunk.page.length;
+      cursor = chunk.continueCursor;
+      isDone = chunk.isDone;
     }
 
-    // 5. Sort results
+    // 3. Sort results
     if (args.sortBy) {
       const sortOrder = args.sortOrder ?? "asc";
-      records.sort((a, b) => {
+      results.sort((a, b) => {
         const aData = a.data as Record<string, unknown>;
         const bData = b.data as Record<string, unknown>;
         const aVal = args.sortBy === "_createdAt" ? a.createdAt : aData[args.sortBy!];
@@ -268,17 +316,19 @@ export const search = query({
       });
     } else {
       // Default sort by createdAt desc
-      records.sort((a, b) => b.createdAt - a.createdAt);
+      results.sort((a, b) => b.createdAt - a.createdAt);
     }
 
-    // 6. Return paginated results
-    const total = records.length;
-    const items = records.slice(0, limit);
+    // 4. Return paginated results
+    const page = results.slice(0, pageSize);
+    const truncated = scanned >= MAX_SCAN_LIMIT && !isDone;
 
     return {
-      items,
-      total,
-      hasMore: total > limit,
+      page,
+      continueCursor: cursor,
+      isDone: isDone && results.length <= pageSize,
+      scanned,
+      truncated,
       objectType: objectType
         ? {
             name: objectType.name,

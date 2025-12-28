@@ -135,19 +135,21 @@ export function createServer() {
 
   server.tool(
     "records.list",
-    "List records of a specific object type",
+    "List records of a specific object type with cursor-based pagination",
     {
       objectType: z.string().describe("Object type slug"),
-      limit: z.number().optional().describe("Maximum number of records to return"),
-      cursor: z.string().optional().describe("Pagination cursor"),
+      numItems: z.number().optional().describe("Number of records per page (default: 50)"),
+      cursor: z.string().nullable().optional().describe("Pagination cursor from previous response"),
     },
-    async ({ objectType, limit, cursor }, extra) => {
+    async ({ objectType, numItems, cursor }, extra) => {
       const auth = getAuthContext(extra, "records.list");
       const result = await convex.query(api.functions.records.queries.list, {
         workspaceId: auth.workspaceId,
         objectTypeSlug: objectType,
-        limit,
-        cursor,
+        paginationOpts: {
+          numItems: numItems ?? 50,
+          cursor: cursor ?? null,
+        },
         actorId: auth.workspaceMemberId,
       });
       return {
@@ -213,7 +215,7 @@ export function createServer() {
 
   server.tool(
     "records.search",
-    "Search and filter records by field values. Supports filtering by any attribute with operators like equals, contains, greaterThan, etc.",
+    "Search and filter records by field values. Supports filtering by any attribute with operators like equals, contains, greaterThan, etc. Uses cursor-based pagination with safety limits.",
     {
       objectType: z.string().optional().describe("Object type slug to filter by (e.g., 'people', 'deals')"),
       filters: z
@@ -244,9 +246,10 @@ export function createServer() {
       query: z.string().optional().describe("Text search across displayName and text fields"),
       sortBy: z.string().optional().describe("Attribute slug to sort by, or '_createdAt'"),
       sortOrder: z.enum(["asc", "desc"]).optional().describe("Sort order (default: asc)"),
-      limit: z.number().optional().describe("Maximum number of records to return (default: 50)"),
+      numItems: z.number().optional().describe("Number of records per page (default: 50)"),
+      cursor: z.string().nullable().optional().describe("Pagination cursor from previous response"),
     },
-    async ({ objectType, filters, query, sortBy, sortOrder, limit }, extra) => {
+    async ({ objectType, filters, query, sortBy, sortOrder, numItems, cursor }, extra) => {
       const auth = getAuthContext(extra, "records.search");
       const result = await convex.query(api.functions.records.queries.search, {
         workspaceId: auth.workspaceId,
@@ -255,7 +258,10 @@ export function createServer() {
         query,
         sortBy,
         sortOrder,
-        limit,
+        paginationOpts: {
+          numItems: numItems ?? 50,
+          cursor: cursor ?? null,
+        },
         actorId: auth.workspaceMemberId,
       });
       return {
