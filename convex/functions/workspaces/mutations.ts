@@ -14,19 +14,9 @@ export const create = mutation({
       throw new Error("User not found");
     }
 
-    // Check for duplicate slug
-    const existing = await ctx.db
-      .query("workspaces")
-      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
-      .first();
-
-    if (existing) {
-      throw new Error(`Workspace with slug '${args.slug}' already exists`);
-    }
-
     const now = Date.now();
 
-    // Create workspace
+    // Insert first, then check for duplicates (prevents TOCTOU race condition)
     const workspaceId = await ctx.db.insert("workspaces", {
       name: args.name,
       slug: args.slug,
@@ -34,6 +24,28 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    // Check for duplicate slugs after insert
+    const duplicates = await ctx.db
+      .query("workspaces")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .collect();
+
+    if (duplicates.length > 1) {
+      // Keep the earliest by _creationTime, delete others
+      const sorted = duplicates.sort((a, b) => a._creationTime - b._creationTime);
+      const winner = sorted[0];
+
+      if (winner._id !== workspaceId) {
+        // We lost the race - delete our record and throw
+        await ctx.db.delete(workspaceId);
+        throw new Error(`Workspace with slug '${args.slug}' already exists`);
+      }
+      // We won - clean up any duplicates (shouldn't normally happen)
+      for (const dup of sorted.slice(1)) {
+        await ctx.db.delete(dup._id);
+      }
+    }
 
     // Create owner member
     const memberId = await ctx.db.insert("workspaceMembers", {

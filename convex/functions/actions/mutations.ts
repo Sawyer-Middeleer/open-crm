@@ -937,20 +937,9 @@ export const create = mutation({
     // Verify the actor has access to this workspace
     await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
 
-    // Check for duplicate slug
-    const existing = await ctx.db
-      .query("actions")
-      .withIndex("by_workspace_slug", (q) =>
-        q.eq("workspaceId", args.workspaceId).eq("slug", args.slug)
-      )
-      .first();
-
-    if (existing) {
-      throw new Error(`Action with slug '${args.slug}' already exists`);
-    }
-
     const now = Date.now();
 
+    // Insert first, then check for duplicates (prevents TOCTOU race condition)
     const actionId = await ctx.db.insert("actions", {
       workspaceId: args.workspaceId,
       name: args.name,
@@ -964,6 +953,27 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    // Check for duplicate slugs after insert
+    const duplicates = await ctx.db
+      .query("actions")
+      .withIndex("by_workspace_slug", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("slug", args.slug)
+      )
+      .collect();
+
+    if (duplicates.length > 1) {
+      const sorted = duplicates.sort((a, b) => a._creationTime - b._creationTime);
+      const winner = sorted[0];
+
+      if (winner._id !== actionId) {
+        await ctx.db.delete(actionId);
+        throw new Error(`Action with slug '${args.slug}' already exists`);
+      }
+      for (const dup of sorted.slice(1)) {
+        await ctx.db.delete(dup._id);
+      }
+    }
 
     await createAuditLog(ctx, {
       workspaceId: args.workspaceId,

@@ -12,6 +12,11 @@ import {
   type AuthConfig,
 } from "./auth/index.js";
 import { getCorsHeaders } from "./lib/validation.js";
+import {
+  ipLimiter,
+  userLimiter,
+  createRateLimitResponse,
+} from "./lib/rateLimiter.js";
 
 // Session TTL configuration
 const SESSION_TTL_MS = 30 * 60 * 1000; // 30 min idle timeout
@@ -166,7 +171,7 @@ export async function startHttpServer(): Promise<void> {
   const port = parseInt(process.env.PORT ?? "3000", 10);
   const hostname = process.env.HOSTNAME ?? "0.0.0.0";
 
-  // Start session cleanup timer
+  // Start session and rate limiter cleanup timer
   setInterval(() => {
     const now = Date.now();
     let expiredCount = 0;
@@ -178,6 +183,15 @@ export async function startHttpServer(): Promise<void> {
     }
     if (expiredCount > 0) {
       console.log(`[MCP] Cleaned up ${expiredCount} expired sessions`);
+    }
+
+    // Clean up rate limiter entries
+    const ipCleaned = ipLimiter.cleanup();
+    const userCleaned = userLimiter.cleanup();
+    if (ipCleaned > 0 || userCleaned > 0) {
+      console.log(
+        `[MCP] Cleaned up rate limits: ${ipCleaned} IP, ${userCleaned} user entries`
+      );
     }
   }, CLEANUP_INTERVAL_MS);
 
@@ -210,6 +224,17 @@ export async function startHttpServer(): Promise<void> {
 
       // MCP endpoint
       if (url.pathname === "/mcp") {
+        // IP-based rate limiting (before auth to prevent brute force)
+        const clientIp =
+          request.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+          request.headers.get("x-real-ip") ||
+          "unknown";
+
+        const ipCheck = ipLimiter.check(clientIp);
+        if (!ipCheck.allowed) {
+          return createRateLimitResponse(ipCheck, ipLimiter.limit);
+        }
+
         try {
           // Convert request headers to our format
           const headers: Record<string, string | undefined> = {};
@@ -220,6 +245,12 @@ export async function startHttpServer(): Promise<void> {
           // Authenticate the request
           const authContext = await authManager.authenticate({ headers });
 
+          // User-based rate limiting (after auth for per-user limits)
+          const userCheck = userLimiter.check(authContext.userId);
+          if (!userCheck.allowed) {
+            return createRateLimitResponse(userCheck, userLimiter.limit);
+          }
+
           // Get or create transport for this session
           const sessionId = headers["mcp-session-id"];
           const transport = getOrCreateTransport(sessionId, mcpServer);
@@ -228,9 +259,22 @@ export async function startHttpServer(): Promise<void> {
           if (transport.sessionId) {
             const existingEntry = sessions.get(transport.sessionId);
             if (existingEntry) {
-              existingEntry.auth = authContext;
+              // Validate session ownership - reject if auth identity changed
+              if (
+                existingEntry.auth.userId !== authContext.userId ||
+                existingEntry.auth.workspaceId !== authContext.workspaceId
+              ) {
+                console.warn(
+                  `[MCP] Session ownership mismatch for ${transport.sessionId}`
+                );
+                return createForbiddenResponse(
+                  "Session belongs to a different identity. Start a new session."
+                );
+              }
+              // Same identity - update activity timestamp only
               existingEntry.lastActivityAt = Date.now();
             } else {
+              // New session
               sessions.set(transport.sessionId, {
                 auth: authContext,
                 transport,

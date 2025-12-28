@@ -40,48 +40,13 @@ This document contains all issues identified during a comprehensive code review 
 
 ### 11. ~~Cursor-Based Pagination Not Implemented~~ ✅ FIXED
 
-### 12. Session Fixation/Hijacking Risk
+### 12. ~~Session Fixation/Hijacking Risk~~ ✅ FIXED
 
-**Location:** `mcp-server/src/http.ts:168-181`
+### 13. ~~No Rate Limiting~~ ✅ FIXED
 
-**Description:** Authentication context can be updated for existing sessions, potentially allowing session hijacking.
+### 14. ~~Race Condition on Slug Uniqueness~~ ✅ FIXED
 
-**Example:**
-```typescript
-if (transport.sessionId) {
-  const existingEntry = sessions.get(transport.sessionId);
-  if (existingEntry) {
-    existingEntry.auth = authContext;  // Auth can be overwritten!
-  }
-}
-```
-
-**Recommendation:** Generate new session IDs after authentication changes.
-
----
-
-### 13. No Rate Limiting
-
-**Location:** `mcp-server/src/http.ts`
-
-**Description:** No rate limiting implemented anywhere in the server, exposing it to brute force attacks, DoS attacks, and enumeration attacks.
-
-**Recommendation:** Implement per-IP and per-user rate limiting.
-
----
-
-### 14. Race Condition on Slug Uniqueness
-
-**Location:** Multiple files
-
-**Description:** Slug duplicate checks have time-of-check-time-of-use (TOCTOU) race conditions. Convex doesn't have unique constraints, so concurrent writes can create duplicates.
-
-**Affected Files:**
-- `convex/functions/workspaces/mutations.ts:17-25`
-- `convex/functions/objectTypes/mutations.ts:17-26`
-- `convex/functions/actions/mutations.ts:922-931`
-
-**Recommendation:** Use optimistic concurrency control or implement a reservation pattern.
+Fixed using insert-first pattern: insert the record, then check for duplicates. If our record isn't the earliest by `_creationTime`, delete it and throw. This leverages Convex's atomic mutations to prevent TOCTOU races.
 
 ---
 

@@ -17,20 +17,9 @@ export const create = mutation({
     // Verify the actor has access to this workspace
     await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
 
-    // Check for duplicate slug
-    const existing = await ctx.db
-      .query("objectTypes")
-      .withIndex("by_workspace_slug", (q) =>
-        q.eq("workspaceId", args.workspaceId).eq("slug", args.slug)
-      )
-      .first();
-
-    if (existing) {
-      throw new Error(`Object type with slug '${args.slug}' already exists`);
-    }
-
     const now = Date.now();
 
+    // Insert first, then check for duplicates (prevents TOCTOU race condition)
     const objectTypeId = await ctx.db.insert("objectTypes", {
       workspaceId: args.workspaceId,
       name: args.name,
@@ -44,6 +33,27 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    // Check for duplicate slugs after insert
+    const duplicates = await ctx.db
+      .query("objectTypes")
+      .withIndex("by_workspace_slug", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("slug", args.slug)
+      )
+      .collect();
+
+    if (duplicates.length > 1) {
+      const sorted = duplicates.sort((a, b) => a._creationTime - b._creationTime);
+      const winner = sorted[0];
+
+      if (winner._id !== objectTypeId) {
+        await ctx.db.delete(objectTypeId);
+        throw new Error(`Object type with slug '${args.slug}' already exists`);
+      }
+      for (const dup of sorted.slice(1)) {
+        await ctx.db.delete(dup._id);
+      }
+    }
 
     await createAuditLog(ctx, {
       workspaceId: args.workspaceId,
