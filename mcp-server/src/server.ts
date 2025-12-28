@@ -5,6 +5,14 @@ import { api } from "../../convex/_generated/api.js";
 import type { Id } from "../../convex/_generated/dataModel.js";
 import { validateUrl, validateUrlPattern } from "./lib/validation.js";
 import { getRequiredScope, hasScope, AuthError } from "./auth/index.js";
+import {
+  validateRecordId,
+  validateSessionId,
+  validateWebhookId,
+  validateTemplateId,
+  validateWorkspaceId,
+  validateOptionalConvexId,
+} from "./lib/validators.js";
 
 export type McpServerWrapper = ReturnType<typeof createServer>;
 
@@ -117,6 +125,7 @@ export function createServer() {
     },
     async ({ recordId }, extra) => {
       const auth = getAuthContext(extra, "records.get");
+      validateRecordId(recordId);
       const result = await convex.query(api.functions.records.queries.get, {
         workspaceId: auth.workspaceId,
         recordId: recordId as any,
@@ -172,6 +181,7 @@ export function createServer() {
     },
     async ({ recordId, data }, extra) => {
       const auth = getAuthContext(extra, "records.update");
+      validateRecordId(recordId);
       const result = await convex.mutation(api.functions.records.mutations.update, {
         workspaceId: auth.workspaceId,
         recordId: recordId as any,
@@ -197,6 +207,7 @@ export function createServer() {
     },
     async ({ recordId }, extra) => {
       const auth = getAuthContext(extra, "records.delete");
+      validateRecordId(recordId);
       const result = await convex.mutation(api.functions.records.mutations.remove, {
         workspaceId: auth.workspaceId,
         recordId: recordId as any,
@@ -287,6 +298,7 @@ export function createServer() {
     },
     async ({ recordId, relationship }, extra) => {
       const auth = getAuthContext(extra, "records.getRelated");
+      validateRecordId(recordId);
       const result = await convex.query(api.functions.records.queries.getRelated, {
         workspaceId: auth.workspaceId,
         recordId: recordId as any,
@@ -356,6 +368,7 @@ export function createServer() {
     },
     async ({ sessionId, mode }, extra) => {
       const auth = getAuthContext(extra, "records.bulkCommit");
+      validateSessionId(sessionId);
       const result = await convex.mutation(api.functions.records.mutations.bulkCommit, {
         workspaceId: auth.workspaceId,
         sessionId: sessionId as any,
@@ -384,6 +397,7 @@ export function createServer() {
     },
     async ({ sessionId, indices }, extra) => {
       const auth = getAuthContext(extra, "records.bulkInspect");
+      validateSessionId(sessionId);
       const result = await convex.query(api.functions.records.queries.bulkInspect, {
         workspaceId: auth.workspaceId,
         sessionId: sessionId as any,
@@ -617,6 +631,7 @@ export function createServer() {
     },
     async ({ listSlug, parentRecordId }, extra) => {
       const auth = getAuthContext(extra, "lists.getEntries");
+      validateOptionalConvexId(parentRecordId, "parentRecordId");
       const result = await convex.query(api.functions.lists.queries.getEntries, {
         workspaceId: auth.workspaceId,
         listSlug,
@@ -645,6 +660,8 @@ export function createServer() {
     },
     async ({ listSlug, recordId, parentRecordId, data }, extra) => {
       const auth = getAuthContext(extra, "lists.addEntry");
+      validateRecordId(recordId);
+      validateOptionalConvexId(parentRecordId, "parentRecordId");
       const result = await convex.mutation(api.functions.lists.mutations.addEntry, {
         workspaceId: auth.workspaceId,
         listSlug,
@@ -674,6 +691,8 @@ export function createServer() {
     },
     async ({ listSlug, recordId, parentRecordId }, extra) => {
       const auth = getAuthContext(extra, "lists.removeEntry");
+      validateRecordId(recordId);
+      validateOptionalConvexId(parentRecordId, "parentRecordId");
       const result = await convex.mutation(api.functions.lists.mutations.removeEntry, {
         workspaceId: auth.workspaceId,
         listSlug,
@@ -734,6 +753,7 @@ export function createServer() {
     },
     async ({ recordId, limit }, extra) => {
       const auth = getAuthContext(extra, "audit.getHistory");
+      validateRecordId(recordId);
       const result = await convex.query(api.functions.audit.queries.getRecordHistory, {
         workspaceId: auth.workspaceId,
         recordId: recordId as any,
@@ -764,6 +784,7 @@ export function createServer() {
     },
     async ({ actionSlug, recordId }, extra) => {
       const auth = getAuthContext(extra, "actions.execute");
+      validateRecordId(recordId);
       const result = await convex.mutation(api.functions.actions.mutations.execute, {
         workspaceId: auth.workspaceId,
         actionSlug,
@@ -994,6 +1015,9 @@ Handler types:
     },
     async ({ webhookId, limit }, extra) => {
       const auth = getAuthContext(extra, "integrations.getWebhookLogs");
+      if (webhookId) {
+        validateWebhookId(webhookId);
+      }
       const result = await convex.query(api.functions.integrations.queries.getWebhookLogs, {
         workspaceId: auth.workspaceId,
         webhookId: webhookId as any,
@@ -1166,6 +1190,9 @@ Use either url/method/headers/body for ad-hoc requests, or templateSlug with var
     },
     async ({ templateId, limit }, extra) => {
       const auth = getAuthContext(extra, "integrations.getRequestLogs");
+      if (templateId) {
+        validateTemplateId(templateId);
+      }
       const result = await convex.query(api.functions.integrations.queries.getHttpRequestLogs, {
         workspaceId: auth.workspaceId,
         templateId: templateId as any,
@@ -1221,6 +1248,9 @@ Use either url/method/headers/body for ad-hoc requests, or templateSlug with var
     },
     async ({ defaultWorkspaceId, timezone }, extra) => {
       const auth = getAuthContext(extra, "users.updatePreferences");
+      if (defaultWorkspaceId) {
+        validateWorkspaceId(defaultWorkspaceId);
+      }
       const result = await convex.mutation(api.functions.auth.mutations.updateUserPreferences, {
         userId: auth.userId,
         preferences: {

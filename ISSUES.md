@@ -46,10 +46,6 @@ This document contains all issues identified during a comprehensive code review 
 
 ### 14. ~~Race Condition on Slug Uniqueness~~ ✅ FIXED
 
-Fixed using insert-first pattern: insert the record, then check for duplicates. If our record isn't the earliest by `_creationTime`, delete it and throw. This leverages Convex's atomic mutations to prevent TOCTOU races.
-
----
-
 ### 15. Dockerfile References Wrong Lock File
 
 **Location:** `Dockerfile:6`
@@ -75,15 +71,15 @@ COPY mcp-server/package.json mcp-server/bun.lockb ./
 
 ---
 
-### 17. Type Coercion Vulnerabilities
+### 17. ~~Type Coercion Vulnerabilities~~ ✅ FIXED
 
-**Location:** `mcp-server/src/server.ts` (multiple locations)
-
-**Description:** IDs are cast using `as any` without validation throughout the file, allowing injection of malformed IDs.
-
-**Affected Lines:** 101, 152, 178, 262, 330, and many more.
-
-**Recommendation:** Add ID format validation before using them in Convex queries.
+Fixed by adding `mcp-server/src/lib/validators.ts` with Convex ID format validation. All ID parameters in `server.ts` are now validated before being passed to Convex queries/mutations using:
+- `validateRecordId()` for required record IDs
+- `validateSessionId()` for bulk import session IDs
+- `validateWebhookId()` for webhook IDs
+- `validateTemplateId()` for HTTP template IDs
+- `validateWorkspaceId()` for workspace IDs
+- `validateOptionalConvexId()` for optional ID parameters
 
 ---
 
