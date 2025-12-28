@@ -1,6 +1,7 @@
-import { mutation } from "../../_generated/server";
+import { mutation, internalMutation } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { v } from "convex/values";
+import type { Id } from "../../_generated/dataModel";
 import { createAuditLog } from "../../lib/audit";
 import { assertActorInWorkspace } from "../../lib/auth";
 import { validateUrlForFetch } from "../../lib/urlValidation";
@@ -14,6 +15,46 @@ import {
 } from "../../lib/actionContext";
 
 // ============================================================================
+// TYPES
+// ============================================================================
+
+interface Step {
+  id: string;
+  type: string;
+  name?: string;
+  config: Record<string, unknown>;
+  thenSteps?: Step[];
+  elseSteps?: Step[];
+  steps?: Step[]; // for loop
+}
+
+interface StepResult {
+  success: boolean;
+  startedAt: number;
+  completedAt: number;
+  output?: unknown;
+  error?: string;
+}
+
+interface StepResultRecord {
+  stepId: string;
+  status: "completed" | "failed";
+  startedAt: number;
+  completedAt: number;
+  output?: unknown;
+  error?: string;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type MutationContext = any; // Using any for ctx since extracting exact type is complex
+
+interface ActionExecutionResult {
+  executionId: Id<"actionExecutions">;
+  status: "completed" | "failed";
+  stepResults: StepResultRecord[];
+}
+
+// ============================================================================
 // ACTION EXECUTION
 // ============================================================================
 
@@ -24,11 +65,11 @@ export const execute = mutation({
     recordId: v.id("records"),
     actorId: v.id("workspaceMembers"),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<ActionExecutionResult> => {
     // Verify the actor has access to this workspace
     await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
 
-    // Get the action
+    // Resolve action slug to ID
     const action = await ctx.db
       .query("actions")
       .withIndex("by_workspace_slug", (q) =>
@@ -40,8 +81,41 @@ export const execute = mutation({
       throw new Error(`Action '${args.actionSlug}' not found`);
     }
 
+    // Delegate to internal execution
+    return ctx.runMutation(internal.functions.actions.mutations.executeInternal, {
+      workspaceId: args.workspaceId,
+      actionId: action._id,
+      recordId: args.recordId,
+      actorId: args.actorId,
+      triggeredBy: "manual",
+    });
+  },
+});
+
+// ============================================================================
+// INTERNAL ACTION EXECUTION (shared by public execute and webhook triggers)
+// ============================================================================
+
+export const executeInternal = internalMutation({
+  args: {
+    workspaceId: v.id("workspaces"),
+    actionId: v.id("actions"),
+    recordId: v.id("records"),
+    actorId: v.id("workspaceMembers"),
+    triggeredBy: v.union(
+      v.literal("manual"),
+      v.literal("automatic"),
+      v.literal("scheduled")
+    ),
+  },
+  handler: async (ctx, args) => {
+    // Get the action
+    const action = await ctx.db.get(args.actionId);
+    if (!action) {
+      throw new Error("Action not found");
+    }
     if (!action.isActive) {
-      throw new Error(`Action '${args.actionSlug}' is not active`);
+      throw new Error("Action is not active");
     }
 
     // Get the record
@@ -55,8 +129,8 @@ export const execute = mutation({
     // Create execution record
     const executionId = await ctx.db.insert("actionExecutions", {
       workspaceId: args.workspaceId,
-      actionId: action._id,
-      triggeredBy: "manual",
+      actionId: args.actionId,
+      triggeredBy: args.triggeredBy,
       triggerRecordId: args.recordId,
       status: "running",
       startedAt: now,
@@ -100,7 +174,11 @@ export const execute = mutation({
         );
 
         // Re-fetch record if it was modified
-        if (["updateField", "clearField", "copyField", "transformField"].includes(step.type)) {
+        if (
+          ["updateField", "clearField", "copyField", "transformField"].includes(
+            step.type
+          )
+        ) {
           const updatedRecord = await ctx.db.get(args.recordId);
           if (updatedRecord) {
             stepContext = { ...stepContext, record: updatedRecord };
@@ -136,7 +214,7 @@ export const execute = mutation({
 
       return {
         executionId,
-        status: allSucceeded ? "completed" : "failed",
+        status: (allSucceeded ? "completed" : "failed") as "completed" | "failed",
         stepResults,
       };
     } catch (error) {
@@ -154,36 +232,6 @@ export const execute = mutation({
 // ============================================================================
 // STEP EXECUTION
 // ============================================================================
-
-interface Step {
-  id: string;
-  type: string;
-  name?: string;
-  config: Record<string, unknown>;
-  thenSteps?: Step[];
-  elseSteps?: Step[];
-  steps?: Step[]; // for loop
-}
-
-interface StepResult {
-  success: boolean;
-  startedAt: number;
-  completedAt: number;
-  output?: unknown;
-  error?: string;
-}
-
-interface StepResultRecord {
-  stepId: string;
-  status: "completed" | "failed";
-  startedAt: number;
-  completedAt: number;
-  output?: unknown;
-  error?: string;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type MutationContext = any; // Using any for ctx since extracting exact type is complex
 
 async function executeStep(
   ctx: MutationContext,

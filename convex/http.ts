@@ -123,17 +123,58 @@ http.route({
         );
         result.createdRecordId = recordId;
       } else if (webhook.handler.type === "triggerAction" && webhook.handler.actionId) {
-        // Trigger an action with the webhook payload as context
-        const executionId = await ctx.runMutation(
+        // Require recordId and actorId in payload for action triggers
+        const p = payload as Record<string, unknown>;
+        if (!p.recordId || typeof p.recordId !== "string") {
+          await ctx.runMutation(internal.functions.integrations.mutations.logIncomingWebhook, {
+            workspaceId,
+            webhookId: webhook._id,
+            headers: Object.fromEntries(request.headers.entries()),
+            payload,
+            sourceIp,
+            status: "failed",
+            error: "Webhook payload must include 'recordId' for triggerAction handler",
+          });
+
+          return new Response(JSON.stringify({
+            error: "Webhook payload must include 'recordId' for triggerAction handler"
+          }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        if (!p.actorId || typeof p.actorId !== "string") {
+          await ctx.runMutation(internal.functions.integrations.mutations.logIncomingWebhook, {
+            workspaceId,
+            webhookId: webhook._id,
+            headers: Object.fromEntries(request.headers.entries()),
+            payload,
+            sourceIp,
+            status: "failed",
+            error: "Webhook payload must include 'actorId' for triggerAction handler",
+          });
+
+          return new Response(JSON.stringify({
+            error: "Webhook payload must include 'actorId' for triggerAction handler"
+          }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        // Trigger the action with recordId and actorId from payload
+        const executionResult = await ctx.runMutation(
           internal.functions.integrations.webhookHandlers.triggerActionFromWebhook,
           {
             workspaceId,
             actionId: webhook.handler.actionId,
+            recordId: p.recordId,
+            actorId: p.actorId,
             payload,
           }
         );
         result.triggeredActionId = webhook.handler.actionId;
-        result.actionExecutionId = executionId;
+        result.actionExecutionId = executionResult.executionId;
       }
 
       // Log successful webhook

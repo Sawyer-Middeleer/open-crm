@@ -1,6 +1,20 @@
 import { internalMutation } from "../../_generated/server";
+import { internal } from "../../_generated/api";
 import { v } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
+
+interface ActionExecutionResult {
+  executionId: Id<"actionExecutions">;
+  status: "completed" | "failed";
+  stepResults: Array<{
+    stepId: string;
+    status: "completed" | "failed";
+    startedAt: number;
+    completedAt: number;
+    output?: unknown;
+    error?: string;
+  }>;
+}
 
 /**
  * Get nested value from object using dot notation path
@@ -106,38 +120,48 @@ export const createRecordFromWebhook = internalMutation({
 
 /**
  * Trigger an action from webhook payload
- * Note: For webhook-triggered actions, the execution is logged but requires
- * a target record to execute steps. Actions that don't need a record context
- * can use the webhookPayload directly in their step configurations.
+ * Requires recordId and actorId in the webhook payload
  */
 export const triggerActionFromWebhook = internalMutation({
   args: {
     workspaceId: v.string(),
     actionId: v.id("actions"),
+    recordId: v.string(),
+    actorId: v.string(),
     payload: v.any(),
   },
-  handler: async (ctx, args) => {
-    // Get the action
+  handler: async (ctx, args): Promise<ActionExecutionResult> => {
+    // Validate action exists and is active
     const action = await ctx.db.get(args.actionId);
     if (!action) {
       throw new Error("Action not found");
     }
+    if (!action.isActive) {
+      throw new Error("Action is not active");
+    }
 
-    // Create action execution record
-    // Note: Webhook-triggered actions are logged; full async execution
-    // requires the action to be configured with a target record or
-    // the steps to work with webhookPayload context
-    const now = Date.now();
-    const executionId = await ctx.db.insert("actionExecutions", {
-      workspaceId: args.workspaceId as Id<"workspaces">,
-      actionId: args.actionId,
-      status: "pending",
-      triggeredBy: "automatic", // webhook-triggered actions are automatic
-      triggerRecordId: undefined,
-      stepResults: [],
-      startedAt: now,
-    });
+    // Validate record exists and belongs to workspace
+    const record = await ctx.db.get(args.recordId as Id<"records">);
+    if (!record || record.workspaceId !== args.workspaceId) {
+      throw new Error("Record not found");
+    }
 
-    return executionId;
+    // Validate actor exists and belongs to workspace
+    const actor = await ctx.db.get(args.actorId as Id<"workspaceMembers">);
+    if (!actor || actor.workspaceId !== args.workspaceId) {
+      throw new Error("Actor not found in workspace");
+    }
+
+    // Execute action via shared internal mutation
+    return ctx.runMutation(
+      internal.functions.actions.mutations.executeInternal,
+      {
+        workspaceId: args.workspaceId as Id<"workspaces">,
+        actionId: args.actionId,
+        recordId: args.recordId as Id<"records">,
+        actorId: args.actorId as Id<"workspaceMembers">,
+        triggeredBy: "automatic",
+      }
+    );
   },
 });
