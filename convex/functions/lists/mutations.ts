@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { createAuditLog } from "../../lib/audit";
 import { assertActorInWorkspace } from "../../lib/auth";
 import { evaluateTriggers } from "../../lib/triggers";
+import { validateCommonFields } from "../../lib/validation";
 
 const attributeTypeValidator = v.union(
   v.literal("text"),
@@ -46,6 +47,9 @@ export const create = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Validate input lengths
+    validateCommonFields(args);
+
     // Verify the actor has access to this workspace
     await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
 

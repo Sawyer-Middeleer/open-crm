@@ -5,7 +5,7 @@ import type { Id } from "../../_generated/dataModel";
 import { createAuditLog } from "../../lib/audit";
 import { assertActorInWorkspace } from "../../lib/auth";
 import { validateUrlForFetch } from "../../lib/urlValidation";
-import { validateCronSchedule } from "../../lib/validation";
+import { validateCronSchedule, validateCommonFields } from "../../lib/validation";
 import type { StepContext } from "../../lib/actionContext";
 import {
   createInitialContext,
@@ -994,6 +994,9 @@ export const create = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Validate input lengths
+    validateCommonFields(args);
+
     // Verify the actor has access to this workspace
     await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
 

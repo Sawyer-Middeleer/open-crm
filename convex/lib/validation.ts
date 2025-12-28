@@ -2,6 +2,49 @@
  * Validation utilities for Convex functions
  */
 
+// Maximum lengths for common fields
+export const MAX_LENGTHS = {
+  slug: 64,
+  name: 128,
+  description: 1000,
+  email: 254,
+  url: 2048,
+} as const;
+
+/**
+ * Validate string length and throw descriptive error if exceeded
+ */
+export function validateStringLength(
+  value: string | undefined | null,
+  fieldName: string,
+  maxLength: number
+): void {
+  if (value && value.length > maxLength) {
+    throw new Error(
+      `${fieldName} exceeds maximum length of ${maxLength} characters (got ${value.length})`
+    );
+  }
+}
+
+/**
+ * Validate common fields on an object
+ */
+export function validateCommonFields(args: {
+  slug?: string;
+  name?: string;
+  description?: string;
+}): void {
+  if (args.slug !== undefined) {
+    validateStringLength(args.slug, "slug", MAX_LENGTHS.slug);
+  }
+  if (args.name !== undefined) {
+    validateStringLength(args.name, "name", MAX_LENGTHS.name);
+  }
+  if (args.description !== undefined) {
+    validateStringLength(args.description, "description", MAX_LENGTHS.description);
+  }
+}
+
 /**
  * Validate cron expression format (5-field: minute hour day month weekday)
  *

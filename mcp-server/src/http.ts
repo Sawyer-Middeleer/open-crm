@@ -18,9 +18,9 @@ import {
   createRateLimitResponse,
 } from "./lib/rateLimiter.js";
 
-// Session TTL configuration
-const SESSION_TTL_MS = 30 * 60 * 1000; // 30 min idle timeout
-const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // Check every 5 min
+// Session TTL configuration (configurable via env vars)
+const SESSION_TTL_MS = parseInt(process.env.SESSION_TTL_MINUTES || "30", 10) * 60 * 1000;
+const CLEANUP_INTERVAL_MS = parseInt(process.env.SESSION_CLEANUP_MINUTES || "5", 10) * 60 * 1000;
 
 // Unified session storage with TTL tracking
 interface SessionEntry {

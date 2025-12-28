@@ -102,17 +102,3 @@ export function getSupportedScopes(): string[] {
   return Object.keys(SCOPES);
 }
 
-/**
- * Validate that scopes are valid
- */
-export function validateScopes(scopes: string[]): {
-  valid: boolean;
-  invalidScopes: string[];
-} {
-  const validScopes = Object.keys(SCOPES);
-  const invalidScopes = scopes.filter((s) => !validScopes.includes(s));
-  return {
-    valid: invalidScopes.length === 0,
-    invalidScopes,
-  };
-}

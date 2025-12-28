@@ -75,6 +75,20 @@ function getAuthContext(extra: unknown, toolName: string): AuthContextFromExtra 
   };
 }
 
+/**
+ * Helper to format tool response with consistent JSON structure
+ */
+function jsonResponse(data: unknown) {
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify(data, null, 2),
+      },
+    ],
+  };
+}
+
 export function createServer() {
   const server = new McpServer({
     name: "agent-crm",
@@ -106,14 +120,7 @@ export function createServer() {
         data,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -131,14 +138,7 @@ export function createServer() {
         recordId: recordId as any,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -161,14 +161,7 @@ export function createServer() {
         },
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -188,14 +181,7 @@ export function createServer() {
         data,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -213,14 +199,7 @@ export function createServer() {
         recordId: recordId as any,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -275,14 +254,7 @@ export function createServer() {
         },
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -305,14 +277,7 @@ export function createServer() {
         relationship,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -345,14 +310,7 @@ export function createServer() {
         records,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -375,14 +333,7 @@ export function createServer() {
         mode,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -404,14 +355,7 @@ export function createServer() {
         indices,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -429,14 +373,7 @@ export function createServer() {
         workspaceId: auth.workspaceId,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -453,14 +390,7 @@ export function createServer() {
         slug: objectType,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -483,14 +413,7 @@ export function createServer() {
         description,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -536,14 +459,7 @@ export function createServer() {
         config: config ?? {},
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -611,14 +527,7 @@ export function createServer() {
         attributes,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -638,14 +547,7 @@ export function createServer() {
         parentRecordId: parentRecordId as any,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -670,14 +572,7 @@ export function createServer() {
         data: data ?? {},
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -700,14 +595,7 @@ export function createServer() {
         parentRecordId: parentRecordId as any,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -729,14 +617,7 @@ export function createServer() {
         slug,
         userId: auth.userId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -760,14 +641,7 @@ export function createServer() {
         limit,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -791,14 +665,7 @@ export function createServer() {
         recordId: recordId as any,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -815,14 +682,7 @@ export function createServer() {
         objectTypeSlug: objectType,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -925,14 +785,7 @@ Variable interpolation: Use {{record.field}}, {{previous.output}}, {{loopItem}},
         isActive: args.isActive,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -971,14 +824,7 @@ Handler types:
         },
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -995,14 +841,7 @@ Handler types:
         includeInactive,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -1024,14 +863,7 @@ Handler types:
         limit,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -1085,14 +917,7 @@ Auth credentials are stored as environment variable NAMES (not values).`,
         auth: args.auth,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -1106,14 +931,7 @@ Auth credentials are stored as environment variable NAMES (not values).`,
         workspaceId: auth.workspaceId,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -1170,14 +988,7 @@ Use either url/method/headers/body for ad-hoc requests, or templateSlug with var
         authConfig: args.authConfig,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -1199,14 +1010,7 @@ Use either url/method/headers/body for ad-hoc requests, or templateSlug with var
         limit,
         actorId: auth.workspaceMemberId,
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 
@@ -1258,14 +1062,7 @@ Use either url/method/headers/body for ad-hoc requests, or templateSlug with var
           timezone,
         },
       });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return jsonResponse(result);
     }
   );
 

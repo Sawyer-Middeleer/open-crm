@@ -85,12 +85,14 @@ export class RateLimiter {
   }
 }
 
-// Pre-configured rate limiters
-// IP limiter: 100 requests per minute (catches auth brute force before auth check)
-export const ipLimiter = new RateLimiter(100, 60_000);
+// Pre-configured rate limiters (configurable via env vars)
+// IP limiter: catches auth brute force before auth check
+const IP_RATE_LIMIT = parseInt(process.env.IP_RATE_LIMIT_PER_MINUTE || "100", 10);
+export const ipLimiter = new RateLimiter(IP_RATE_LIMIT, 60_000);
 
-// User limiter: 300 requests per minute (allows legitimate heavy usage after auth)
-export const userLimiter = new RateLimiter(300, 60_000);
+// User limiter: allows legitimate heavy usage after auth
+const USER_RATE_LIMIT = parseInt(process.env.USER_RATE_LIMIT_PER_MINUTE || "300", 10);
+export const userLimiter = new RateLimiter(USER_RATE_LIMIT, 60_000);
 
 /**
  * Create a 429 Too Many Requests response with standard headers
