@@ -21,10 +21,15 @@ export interface OAuthStrategyConfig {
 /**
  * OAuth 2.1 authentication provider
  * Validates JWT tokens using JWKS
+ *
+ * Supports:
+ * - Interactive users: workspace from X-Workspace-Id header
+ * - M2M clients: workspace from token claim (workspace_id, org_id, or custom)
+ * - Scopes from token (space-separated per RFC 8693 or array)
  */
 export class OAuthStrategy implements AuthProvider {
   readonly name: string;
-  readonly priority = 20; // After API key
+  readonly priority = 10; // Primary auth provider
 
   private config: OAuthStrategyConfig;
   private jwks: ReturnType<typeof createRemoteJWKSet>;
@@ -41,7 +46,7 @@ export class OAuthStrategy implements AuthProvider {
     // Extract Bearer token
     const authHeader = request.headers["authorization"];
     if (!authHeader?.startsWith("Bearer ")) {
-      return null; // No Bearer token, let other providers try
+      return null; // No Bearer token
     }
 
     const token = authHeader.slice(7);
@@ -58,27 +63,21 @@ export class OAuthStrategy implements AuthProvider {
       throw new AuthError(
         `Invalid token: ${error instanceof Error ? error.message : "verification failed"}`,
         401,
-        this.name
+        this.name,
+        "invalid_token"
       );
     }
 
-    // Check expiration
+    // Check expiration (jose already does this, but belt and suspenders)
     if (claims.exp && claims.exp * 1000 < Date.now()) {
-      throw new AuthError("Token has expired", 401, this.name);
+      throw new AuthError("Token has expired", 401, this.name, "invalid_token");
     }
 
     // Get or create user
     const userId = await this.getOrCreateUser(claims);
 
-    // Get workspace from header
-    const workspaceIdStr = request.headers["x-workspace-id"];
-    if (!workspaceIdStr) {
-      throw new AuthError(
-        "X-Workspace-Id header required",
-        400,
-        this.name
-      );
-    }
+    // Get workspace ID from token claim (M2M) or header (interactive)
+    const workspaceIdStr = this.extractWorkspaceId(claims, request);
 
     // Get workspace member
     const member = await this.convex.query(
@@ -97,6 +96,9 @@ export class OAuthStrategy implements AuthProvider {
       );
     }
 
+    // Extract scopes from JWT (space-separated per RFC 8693 or array)
+    const scopes = this.extractScopes(claims);
+
     return {
       userId,
       email: claims.email,
@@ -105,12 +107,72 @@ export class OAuthStrategy implements AuthProvider {
       role: member.role,
       authMethod: "oauth",
       provider: this.config.providerName,
+      scopes,
     };
+  }
+
+  /**
+   * Extract workspace ID from token claims or request header
+   * Priority: token claim > header
+   *
+   * Common claim names by provider:
+   * - PropelAuth: org_id
+   * - Auth0/custom: workspace_id or https://agent-crm/workspace_id
+   */
+  private extractWorkspaceId(
+    claims: TokenClaims,
+    request: AuthRequest
+  ): string {
+    // Try token claims first (M2M flow)
+    const claimWorkspaceId =
+      (claims.workspace_id as string) ??
+      (claims.org_id as string) ?? // PropelAuth uses org_id
+      (claims["https://agent-crm/workspace_id"] as string);
+
+    if (claimWorkspaceId) {
+      return claimWorkspaceId;
+    }
+
+    // Fall back to header (interactive flow)
+    const headerWorkspaceId = request.headers["x-workspace-id"];
+    if (headerWorkspaceId) {
+      return headerWorkspaceId;
+    }
+
+    throw new AuthError(
+      "Workspace ID required: include workspace_id claim in token or X-Workspace-Id header",
+      400,
+      this.name
+    );
+  }
+
+  /**
+   * Extract scopes from JWT claims
+   * Handles both space-separated string (RFC 8693) and array formats
+   */
+  private extractScopes(claims: TokenClaims): string[] {
+    // Space-separated string (OAuth 2.0 / RFC 8693)
+    if (typeof claims.scope === "string") {
+      return claims.scope.split(" ").filter(Boolean);
+    }
+
+    // Array format (some providers use this)
+    if (Array.isArray(claims.scp)) {
+      return claims.scp;
+    }
+
+    // No scopes in token
+    return [];
   }
 
   private async getOrCreateUser(claims: TokenClaims): Promise<Id<"users">> {
     if (!claims.email) {
-      throw new AuthError("Token missing email claim", 401, this.name);
+      throw new AuthError(
+        "Token missing email claim",
+        401,
+        this.name,
+        "invalid_token"
+      );
     }
 
     // Upsert user

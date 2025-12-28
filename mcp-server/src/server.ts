@@ -3,7 +3,8 @@ import { z } from "zod";
 import { getConvexClient } from "./convex/client.js";
 import { api } from "../../convex/_generated/api.js";
 import type { Id } from "../../convex/_generated/dataModel.js";
-import { validateUrl } from "./lib/validation.js";
+import { validateUrl, validateUrlPattern } from "./lib/validation.js";
+import { getRequiredScope, hasScope, AuthError } from "./auth/index.js";
 
 export type McpServerWrapper = ReturnType<typeof createServer>;
 
@@ -16,11 +17,16 @@ interface AuthContextFromExtra {
   workspaceId: Id<"workspaces">;
   workspaceMemberId: Id<"workspaceMembers">;
   role: "owner" | "admin" | "member" | "viewer";
-  authMethod: "oauth" | "api-key";
+  authMethod: "oauth";
   provider?: string;
+  scopes: string[];
 }
 
-function getAuthContext(extra: unknown): AuthContextFromExtra {
+/**
+ * Extract and validate auth context for a tool call
+ * Checks that the token has the required scope for the tool
+ */
+function getAuthContext(extra: unknown, toolName: string): AuthContextFromExtra {
   const authInfo = (extra as Record<string, unknown>)?.authInfo as
     | Record<string, unknown>
     | undefined;
@@ -35,14 +41,29 @@ function getAuthContext(extra: unknown): AuthContextFromExtra {
     throw new Error("Invalid auth context: missing required fields");
   }
 
+  // Extract scopes from authInfo (set by http.ts from OAuth token)
+  const scopes = (authInfo?.scopes as string[]) ?? [];
+
+  // Check if token has required scope for this tool
+  const requiredScope = getRequiredScope(toolName);
+  if (!hasScope(scopes, requiredScope)) {
+    throw new AuthError(
+      `Insufficient scope: ${toolName} requires ${requiredScope}`,
+      403,
+      "scope-check",
+      "insufficient_scope"
+    );
+  }
+
   return {
     userId: data.userId as Id<"users">,
     workspaceId: data.workspaceId as Id<"workspaces">,
     workspaceMemberId: data.workspaceMemberId as Id<"workspaceMembers">,
     role: data.role as "owner" | "admin" | "member" | "viewer",
-    authMethod: (data.authMethod as "oauth" | "api-key") ?? "api-key",
+    authMethod: "oauth",
     email: data.email as string | undefined,
     provider: data.provider as string | undefined,
+    scopes,
   };
 }
 
@@ -70,7 +91,7 @@ export function createServer() {
         .describe("Record data keyed by attribute slug"),
     },
     async ({ objectType, data }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "records.create");
       const result = await convex.mutation(api.functions.records.mutations.create, {
         workspaceId: auth.workspaceId,
         objectTypeSlug: objectType,
@@ -95,10 +116,11 @@ export function createServer() {
       recordId: z.string().describe("Record ID"),
     },
     async ({ recordId }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "records.get");
       const result = await convex.query(api.functions.records.queries.get, {
         workspaceId: auth.workspaceId,
         recordId: recordId as any,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -120,12 +142,13 @@ export function createServer() {
       cursor: z.string().optional().describe("Pagination cursor"),
     },
     async ({ objectType, limit, cursor }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "records.list");
       const result = await convex.query(api.functions.records.queries.list, {
         workspaceId: auth.workspaceId,
         objectTypeSlug: objectType,
         limit,
         cursor,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -146,7 +169,7 @@ export function createServer() {
       data: z.record(z.any()).describe("Fields to update"),
     },
     async ({ recordId, data }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "records.update");
       const result = await convex.mutation(api.functions.records.mutations.update, {
         workspaceId: auth.workspaceId,
         recordId: recordId as any,
@@ -171,7 +194,7 @@ export function createServer() {
       recordId: z.string().describe("Record ID"),
     },
     async ({ recordId }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "records.delete");
       const result = await convex.mutation(api.functions.records.mutations.remove, {
         workspaceId: auth.workspaceId,
         recordId: recordId as any,
@@ -224,7 +247,7 @@ export function createServer() {
       limit: z.number().optional().describe("Maximum number of records to return (default: 50)"),
     },
     async ({ objectType, filters, query, sortBy, sortOrder, limit }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "records.search");
       const result = await convex.query(api.functions.records.queries.search, {
         workspaceId: auth.workspaceId,
         objectTypeSlug: objectType,
@@ -233,6 +256,7 @@ export function createServer() {
         sortBy,
         sortOrder,
         limit,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -256,11 +280,12 @@ export function createServer() {
         .describe("Filter to specific relationship (attribute slug or list slug)"),
     },
     async ({ recordId, relationship }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "records.getRelated");
       const result = await convex.query(api.functions.records.queries.getRelated, {
         workspaceId: auth.workspaceId,
         recordId: recordId as any,
         relationship,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -295,7 +320,7 @@ export function createServer() {
         .describe("Array of records to validate"),
     },
     async ({ objectType, records }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "records.bulkValidate");
       const result = await convex.mutation(api.functions.records.mutations.bulkValidate, {
         workspaceId: auth.workspaceId,
         objectTypeSlug: objectType,
@@ -324,7 +349,7 @@ export function createServer() {
         .describe("'validOnly' skips invalid records, 'all' attempts everything"),
     },
     async ({ sessionId, mode }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "records.bulkCommit");
       const result = await convex.mutation(api.functions.records.mutations.bulkCommit, {
         workspaceId: auth.workspaceId,
         sessionId: sessionId as any,
@@ -352,11 +377,12 @@ export function createServer() {
         .describe("Array of record indices to inspect (0-based)"),
     },
     async ({ sessionId, indices }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "records.bulkInspect");
       const result = await convex.query(api.functions.records.queries.bulkInspect, {
         workspaceId: auth.workspaceId,
         sessionId: sessionId as any,
         indices,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -378,9 +404,10 @@ export function createServer() {
     "List all object types in the workspace",
     {},
     async (_args, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "schema.objectTypes.list");
       const result = await convex.query(api.functions.objectTypes.queries.list, {
         workspaceId: auth.workspaceId,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -400,10 +427,11 @@ export function createServer() {
       objectType: z.string().describe("Object type slug"),
     },
     async ({ objectType }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "schema.objectTypes.get");
       const result = await convex.query(api.functions.objectTypes.queries.getWithAttributes, {
         workspaceId: auth.workspaceId,
         slug: objectType,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -426,7 +454,7 @@ export function createServer() {
       description: z.string().optional().describe("Description of the object type"),
     },
     async ({ name, singularName, slug, description }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "schema.objectTypes.create");
       const result = await convex.mutation(api.functions.objectTypes.mutations.create, {
         workspaceId: auth.workspaceId,
         name,
@@ -477,7 +505,7 @@ export function createServer() {
       config: z.record(z.any()).optional().describe("Type-specific configuration"),
     },
     async ({ objectType, name, slug, type, isRequired, config }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "schema.attributes.create");
       const result = await convex.mutation(api.functions.attributes.mutations.create, {
         workspaceId: auth.workspaceId,
         objectTypeSlug: objectType,
@@ -551,7 +579,7 @@ export function createServer() {
         .describe("Custom attributes for list entries"),
     },
     async ({ name, slug, description, parentObjectType, allowedObjectTypes, icon, attributes }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "lists.create");
       const result = await convex.mutation(api.functions.lists.mutations.create, {
         workspaceId: auth.workspaceId,
         name,
@@ -582,11 +610,12 @@ export function createServer() {
       parentRecordId: z.string().optional().describe("Filter by parent record ID"),
     },
     async ({ listSlug, parentRecordId }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "lists.getEntries");
       const result = await convex.query(api.functions.lists.queries.getEntries, {
         workspaceId: auth.workspaceId,
         listSlug,
         parentRecordId: parentRecordId as any,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -609,7 +638,7 @@ export function createServer() {
       data: z.record(z.any()).optional().describe("List entry attribute values"),
     },
     async ({ listSlug, recordId, parentRecordId, data }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "lists.addEntry");
       const result = await convex.mutation(api.functions.lists.mutations.addEntry, {
         workspaceId: auth.workspaceId,
         listSlug,
@@ -638,7 +667,7 @@ export function createServer() {
       parentRecordId: z.string().optional().describe("Parent record (for scoped lists)"),
     },
     async ({ listSlug, recordId, parentRecordId }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "lists.removeEntry");
       const result = await convex.mutation(api.functions.lists.mutations.removeEntry, {
         workspaceId: auth.workspaceId,
         listSlug,
@@ -669,7 +698,7 @@ export function createServer() {
       slug: z.string().describe("URL-safe identifier (must be unique)"),
     },
     async ({ name, slug }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "workspace.create");
       const result = await convex.mutation(api.functions.workspaces.mutations.create, {
         name,
         slug,
@@ -698,11 +727,12 @@ export function createServer() {
       limit: z.number().optional().describe("Maximum entries to return"),
     },
     async ({ recordId, limit }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "audit.getHistory");
       const result = await convex.query(api.functions.audit.queries.getRecordHistory, {
         workspaceId: auth.workspaceId,
         recordId: recordId as any,
         limit,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -727,7 +757,7 @@ export function createServer() {
       recordId: z.string().describe("Record to execute action on"),
     },
     async ({ actionSlug, recordId }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "actions.execute");
       const result = await convex.mutation(api.functions.actions.mutations.execute, {
         workspaceId: auth.workspaceId,
         actionSlug,
@@ -752,10 +782,11 @@ export function createServer() {
       objectType: z.string().optional().describe("Filter by object type slug"),
     },
     async ({ objectType }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "actions.list");
       const result = await convex.query(api.functions.actions.queries.list, {
         workspaceId: auth.workspaceId,
         objectTypeSlug: objectType,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -855,7 +886,7 @@ Variable interpolation: Use {{record.field}}, {{previous.output}}, {{loopItem}},
       isActive: z.boolean().optional().default(true).describe("Whether action is active"),
     },
     async (args, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "actions.create");
       const result = await convex.mutation(api.functions.actions.mutations.createWithSlugs, {
         workspaceId: auth.workspaceId,
         name: args.name,
@@ -899,7 +930,7 @@ Handler types:
       actionSlug: z.string().optional().describe("Action slug (for triggerAction handler)"),
     },
     async (args, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "integrations.createWebhookEndpoint");
       const result = await convex.mutation(api.functions.integrations.mutations.createIncomingWebhook, {
         workspaceId: auth.workspaceId,
         name: args.name,
@@ -931,10 +962,11 @@ Handler types:
       includeInactive: z.boolean().optional().describe("Include disabled webhooks"),
     },
     async ({ includeInactive }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "integrations.listWebhookEndpoints");
       const result = await convex.query(api.functions.integrations.queries.listIncomingWebhooks, {
         workspaceId: auth.workspaceId,
         includeInactive,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -955,11 +987,12 @@ Handler types:
       limit: z.number().optional().describe("Maximum number of logs to return (default 50)"),
     },
     async ({ webhookId, limit }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "integrations.getWebhookLogs");
       const result = await convex.query(api.functions.integrations.queries.getWebhookLogs, {
         workspaceId: auth.workspaceId,
         webhookId: webhookId as any,
         limit,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -995,21 +1028,19 @@ Auth credentials are stored as environment variable NAMES (not values).`,
       }).optional().describe("Authentication configuration"),
     },
     async (args, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "integrations.createTemplate");
 
-      // Validate URL to prevent SSRF (skip if URL contains template variables)
-      if (!args.url.includes("{{")) {
-        const urlValidation = validateUrl(args.url);
-        if (!urlValidation.valid) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({ error: urlValidation.error }, null, 2),
-              },
-            ],
-          };
-        }
+      // Validate URL pattern to prevent SSRF (handles both static URLs and templates with variables)
+      const urlValidation = validateUrlPattern(args.url);
+      if (!urlValidation.valid) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: urlValidation.error }, null, 2),
+            },
+          ],
+        };
       }
 
       const result = await convex.mutation(api.functions.integrations.mutations.createHttpTemplate, {
@@ -1040,9 +1071,10 @@ Auth credentials are stored as environment variable NAMES (not values).`,
     "List all HTTP request templates for a workspace",
     {},
     async (_args, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "integrations.listTemplates");
       const result = await convex.query(api.functions.integrations.queries.listHttpTemplates, {
         workspaceId: auth.workspaceId,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -1074,7 +1106,7 @@ Use either url/method/headers/body for ad-hoc requests, or templateSlug with var
       }).optional().describe("Auth config (if not using template)"),
     },
     async (args, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "integrations.sendRequest");
       if (!args.url || !args.method) {
         return {
           content: [
@@ -1127,11 +1159,12 @@ Use either url/method/headers/body for ad-hoc requests, or templateSlug with var
       limit: z.number().optional().describe("Maximum number of logs to return (default 50)"),
     },
     async ({ templateId, limit }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "integrations.getRequestLogs");
       const result = await convex.query(api.functions.integrations.queries.getHttpRequestLogs, {
         workspaceId: auth.workspaceId,
         templateId: templateId as any,
         limit,
+        actorId: auth.workspaceMemberId,
       });
       return {
         content: [
@@ -1153,7 +1186,7 @@ Use either url/method/headers/body for ad-hoc requests, or templateSlug with var
     "Get the currently authenticated user's information including their workspaces",
     {},
     async (_args, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "users.me");
       const [user, workspaces] = await Promise.all([
         convex.query(api.functions.auth.queries.getUser, {
           userId: auth.userId,
@@ -1181,99 +1214,13 @@ Use either url/method/headers/body for ad-hoc requests, or templateSlug with var
       timezone: z.string().optional().describe("User's timezone (e.g., 'America/New_York')"),
     },
     async ({ defaultWorkspaceId, timezone }, extra) => {
-      const auth = getAuthContext(extra);
+      const auth = getAuthContext(extra, "users.updatePreferences");
       const result = await convex.mutation(api.functions.auth.mutations.updateUserPreferences, {
         userId: auth.userId,
         preferences: {
           defaultWorkspaceId: defaultWorkspaceId as any,
           timezone,
         },
-      });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    }
-  );
-
-  // ============================================================================
-  // API KEY TOOLS
-  // ============================================================================
-
-  server.tool(
-    "apiKeys.create",
-    "Create a new API key for the current workspace. The key is only shown once - save it securely!",
-    {
-      name: z.string().describe("Name to identify this key"),
-      scopes: z.array(z.string()).optional().describe("Permission scopes (default: all)"),
-      expiresInDays: z.number().optional().describe("Number of days until expiration (optional)"),
-    },
-    async ({ name, scopes, expiresInDays }, extra) => {
-      const auth = getAuthContext(extra);
-      const expiresAt = expiresInDays
-        ? Date.now() + expiresInDays * 24 * 60 * 60 * 1000
-        : undefined;
-
-      const result = await convex.mutation(api.functions.auth.mutations.createApiKey, {
-        workspaceId: auth.workspaceId,
-        userId: auth.userId,
-        name,
-        scopes: scopes ?? ["*"],
-        expiresAt,
-      });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                ...result,
-                warning: "Save this key now - it cannot be retrieved later!",
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
-    }
-  );
-
-  server.tool(
-    "apiKeys.list",
-    "List all API keys for the current workspace (secrets are not shown)",
-    {},
-    async (_args, extra) => {
-      const auth = getAuthContext(extra);
-      const result = await convex.query(api.functions.auth.queries.listApiKeys, {
-        workspaceId: auth.workspaceId,
-      });
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    }
-  );
-
-  server.tool(
-    "apiKeys.revoke",
-    "Revoke an API key, making it permanently inactive",
-    {
-      keyId: z.string().describe("API key ID to revoke"),
-    },
-    async ({ keyId }, extra) => {
-      const auth = getAuthContext(extra);
-      const result = await convex.mutation(api.functions.auth.mutations.revokeApiKey, {
-        keyId: keyId as any,
-        userId: auth.userId,
       });
       return {
         content: [

@@ -8,15 +8,15 @@ export interface AuthContext {
   userId: Id<"users">;
   email?: string;
 
-  // Workspace context (from X-Workspace-Id header)
+  // Workspace context (from token claim or X-Workspace-Id header)
   workspaceId: Id<"workspaces">;
   workspaceMemberId: Id<"workspaceMembers">;
   role: "owner" | "admin" | "member" | "viewer";
 
   // Auth metadata
-  authMethod: "oauth" | "api-key";
+  authMethod: "oauth";
   provider?: string;
-  scopes?: string[];
+  scopes: string[];
 }
 
 /**
@@ -56,6 +56,8 @@ export interface TokenClaims {
   aud?: string | string[];
   exp: number;
   iat: number;
+  scope?: string;
+  scp?: string[];
   [key: string]: unknown;
 }
 

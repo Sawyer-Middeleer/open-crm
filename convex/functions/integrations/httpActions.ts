@@ -1,6 +1,7 @@
 import { action, internalAction } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { v } from "convex/values";
+import { validateUrlForFetch } from "../../lib/urlValidation";
 
 /**
  * Parse JSON safely, returning the original string if parsing fails
@@ -113,6 +114,31 @@ export const sendHttpRequest = internalAction({
   handler: async (ctx, args) => {
     const sentAt = Date.now();
 
+    // Validate URL to prevent SSRF attacks
+    const urlValidation = validateUrlForFetch(args.url);
+    if (!urlValidation.valid) {
+      const completedAt = Date.now();
+      await ctx.runMutation(internal.functions.integrations.mutations.logHttpRequest, {
+        workspaceId: args.workspaceId,
+        templateId: args.templateId,
+        actionExecutionId: args.actionExecutionId,
+        stepId: args.stepId,
+        method: args.method,
+        url: args.url,
+        requestHeaders: {},
+        status: "failed",
+        error: `SSRF blocked: ${urlValidation.error}`,
+        sentAt,
+        completedAt,
+        durationMs: completedAt - sentAt,
+      });
+      return {
+        success: false,
+        error: `SSRF blocked: ${urlValidation.error}`,
+        durationMs: completedAt - sentAt,
+      };
+    }
+
     // Build headers
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -215,6 +241,28 @@ export const sendRequest = action({
   },
   handler: async (ctx, args) => {
     const sentAt = Date.now();
+
+    // Validate URL to prevent SSRF attacks
+    const urlValidation = validateUrlForFetch(args.url);
+    if (!urlValidation.valid) {
+      const completedAt = Date.now();
+      await ctx.runMutation(internal.functions.integrations.mutations.logHttpRequest, {
+        workspaceId: args.workspaceId,
+        method: args.method,
+        url: args.url,
+        requestHeaders: {},
+        status: "failed",
+        error: `SSRF blocked: ${urlValidation.error}`,
+        sentAt,
+        completedAt,
+        durationMs: completedAt - sentAt,
+      });
+      return {
+        success: false,
+        error: `SSRF blocked: ${urlValidation.error}`,
+        durationMs: completedAt - sentAt,
+      };
+    }
 
     // Build headers
     const headers: Record<string, string> = {
@@ -350,6 +398,29 @@ export const sendFromTemplate = action({
     const body = interpolateObject(template.body, variables);
 
     const sentAt = Date.now();
+
+    // Validate the fully interpolated URL to prevent SSRF attacks
+    const urlValidation = validateUrlForFetch(url);
+    if (!urlValidation.valid) {
+      const completedAt = Date.now();
+      await ctx.runMutation(internal.functions.integrations.mutations.logHttpRequest, {
+        workspaceId: args.workspaceId,
+        templateId: template._id,
+        method: template.method,
+        url,
+        requestHeaders: {},
+        status: "failed",
+        error: `SSRF blocked: ${urlValidation.error}`,
+        sentAt,
+        completedAt,
+        durationMs: completedAt - sentAt,
+      });
+      return {
+        success: false,
+        error: `SSRF blocked: ${urlValidation.error}`,
+        durationMs: completedAt - sentAt,
+      };
+    }
 
     // Build headers
     const finalHeaders: Record<string, string> = {

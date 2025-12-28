@@ -1,13 +1,18 @@
 import { query } from "../../_generated/server";
 import { v } from "convex/values";
+import { assertActorInWorkspace } from "../../lib/auth";
 
 export const getRecordHistory = query({
   args: {
     workspaceId: v.id("workspaces"),
     recordId: v.id("records"),
     limit: v.optional(v.number()),
+    actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const limit = args.limit ?? 50;
 
     const logs = await ctx.db
@@ -55,8 +60,12 @@ export const getWorkspaceActivity = query({
     workspaceId: v.id("workspaces"),
     limit: v.optional(v.number()),
     since: v.optional(v.number()),
+    actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const limit = args.limit ?? 100;
 
     let logsQuery = ctx.db

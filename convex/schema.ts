@@ -470,25 +470,8 @@ const actionExecutions = defineTable({
   .index("by_workspace_started", ["workspaceId", "startedAt"]);
 
 // ============================================================================
-// API KEYS & WEBHOOKS
+// WEBHOOKS
 // ============================================================================
-
-const apiKeys = defineTable({
-  workspaceId: v.id("workspaces"),
-  userId: v.optional(v.id("users")), // Optional user association
-  name: v.string(),
-  keyHash: v.string(),
-  keyPrefix: v.string(),
-  scopes: v.array(v.string()), // e.g., ["records:read", "records:write"]
-  expiresAt: v.optional(v.number()),
-  lastUsedAt: v.optional(v.number()),
-  createdBy: v.id("users"),
-  createdAt: v.number(),
-  isActive: v.boolean(),
-})
-  .index("by_workspace", ["workspaceId"])
-  .index("by_user", ["userId"])
-  .index("by_key_prefix", ["keyPrefix"]);
 
 const webhookEndpoints = defineTable({
   workspaceId: v.id("workspaces"),
@@ -730,8 +713,7 @@ export default defineSchema({
   actions,
   actionExecutions,
 
-  // API & Webhooks
-  apiKeys,
+  // Webhooks
   webhookEndpoints,
 
   // Integrations

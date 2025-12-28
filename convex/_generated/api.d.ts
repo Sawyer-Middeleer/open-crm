@@ -29,6 +29,8 @@ import type * as functions_workspaces_queries from "../functions/workspaces/quer
 import type * as http from "../http.js";
 import type * as lib_actionContext from "../lib/actionContext.js";
 import type * as lib_audit from "../lib/audit.js";
+import type * as lib_auth from "../lib/auth.js";
+import type * as lib_urlValidation from "../lib/urlValidation.js";
 
 import type {
   ApiFromModules,
@@ -58,6 +60,8 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   "lib/actionContext": typeof lib_actionContext;
   "lib/audit": typeof lib_audit;
+  "lib/auth": typeof lib_auth;
+  "lib/urlValidation": typeof lib_urlValidation;
 }>;
 
 /**

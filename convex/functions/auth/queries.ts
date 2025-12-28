@@ -2,46 +2,6 @@ import { query } from "../../_generated/server";
 import { v } from "convex/values";
 
 /**
- * Validate an API key by prefix and hash
- */
-export const validateApiKey = query({
-  args: {
-    keyPrefix: v.string(),
-    keyHash: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const apiKey = await ctx.db
-      .query("apiKeys")
-      .withIndex("by_key_prefix", (q) => q.eq("keyPrefix", args.keyPrefix))
-      .first();
-
-    if (!apiKey) {
-      return null;
-    }
-
-    // Verify hash matches
-    if (apiKey.keyHash !== args.keyHash) {
-      return null;
-    }
-
-    // Get the user who created this key
-    const user = await ctx.db.get(apiKey.createdBy);
-    if (!user) {
-      return null;
-    }
-
-    return {
-      workspaceId: apiKey.workspaceId,
-      userId: apiKey.createdBy,
-      name: apiKey.name,
-      scopes: apiKey.scopes,
-      expiresAt: apiKey.expiresAt,
-      isActive: apiKey.isActive,
-    };
-  },
-});
-
-/**
  * Get workspace member by user ID and workspace ID
  */
 export const getMemberByUserAndWorkspace = query({
@@ -109,33 +69,6 @@ export const getUser = query({
   },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.userId);
-  },
-});
-
-/**
- * List API keys for a workspace (without secrets)
- */
-export const listApiKeys = query({
-  args: {
-    workspaceId: v.id("workspaces"),
-  },
-  handler: async (ctx, args) => {
-    const keys = await ctx.db
-      .query("apiKeys")
-      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
-      .collect();
-
-    // Return keys without the hash
-    return keys.map((key) => ({
-      _id: key._id,
-      name: key.name,
-      keyPrefix: key.keyPrefix,
-      scopes: key.scopes,
-      expiresAt: key.expiresAt,
-      lastUsedAt: key.lastUsedAt,
-      isActive: key.isActive,
-      createdAt: key.createdAt,
-    }));
   },
 });
 

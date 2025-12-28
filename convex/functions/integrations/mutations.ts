@@ -1,5 +1,6 @@
 import { mutation, internalMutation } from "../../_generated/server";
 import { v } from "convex/values";
+import { assertActorInWorkspace } from "../../lib/auth";
 
 /**
  * Generate a random webhook secret using Web Crypto API
@@ -111,6 +112,9 @@ export const createIncomingWebhook = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     // Check for duplicate slug
     const existing = await ctx.db
       .query("incomingWebhooks")
@@ -212,6 +216,9 @@ export const updateIncomingWebhook = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const webhook = await ctx.db.get(args.webhookId);
 
     if (!webhook || webhook.workspaceId !== args.workspaceId) {
@@ -283,6 +290,9 @@ export const deleteIncomingWebhook = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const webhook = await ctx.db.get(args.webhookId);
 
     if (!webhook || webhook.workspaceId !== args.workspaceId) {
@@ -305,6 +315,9 @@ export const regenerateWebhookSecret = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const webhook = await ctx.db.get(args.webhookId);
 
     if (!webhook || webhook.workspaceId !== args.workspaceId) {
@@ -402,6 +415,9 @@ export const createHttpTemplate = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     // Check for duplicate slug
     const existing = await ctx.db
       .query("httpTemplates")
@@ -475,6 +491,9 @@ export const updateHttpTemplate = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const template = await ctx.db.get(args.templateId);
 
     if (!template || template.workspaceId !== args.workspaceId) {
@@ -511,6 +530,9 @@ export const deleteHttpTemplate = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const template = await ctx.db.get(args.templateId);
 
     if (!template || template.workspaceId !== args.workspaceId) {

@@ -1,6 +1,7 @@
 import { mutation } from "../../_generated/server";
 import { v } from "convex/values";
 import { createAuditLog } from "../../lib/audit";
+import { assertActorInWorkspace } from "../../lib/auth";
 
 const attributeTypeValidator = v.union(
   v.literal("text"),
@@ -44,6 +45,9 @@ export const create = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     // Check for duplicate slug
     const existing = await ctx.db
       .query("lists")
@@ -180,6 +184,9 @@ export const addEntry = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const list = await ctx.db
       .query("lists")
       .withIndex("by_workspace_slug", (q) =>
@@ -256,6 +263,9 @@ export const updateEntry = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const existing = await ctx.db.get(args.entryId);
 
     if (!existing || existing.workspaceId !== args.workspaceId) {
@@ -300,6 +310,9 @@ export const removeEntry = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const list = await ctx.db
       .query("lists")
       .withIndex("by_workspace_slug", (q) =>

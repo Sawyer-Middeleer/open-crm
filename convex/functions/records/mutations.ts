@@ -1,6 +1,7 @@
 import { mutation } from "../../_generated/server";
 import { v } from "convex/values";
 import { createAuditLog, computeChanges } from "../../lib/audit";
+import { assertActorInWorkspace } from "../../lib/auth";
 
 export const create = mutation({
   args: {
@@ -10,6 +11,9 @@ export const create = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     // Get the object type
     const objectType = await ctx.db
       .query("objectTypes")
@@ -81,6 +85,9 @@ export const update = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const existing = await ctx.db.get(args.recordId);
 
     if (!existing) {
@@ -148,6 +155,9 @@ export const remove = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const existing = await ctx.db.get(args.recordId);
 
     if (!existing) {
@@ -345,6 +355,9 @@ export const bulkValidate = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     // Get object type
     const objectType = await ctx.db
       .query("objectTypes")
@@ -493,6 +506,9 @@ export const bulkCommit = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const session = await ctx.db.get(args.sessionId);
 
     if (!session) {

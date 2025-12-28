@@ -10,7 +10,8 @@ function createMockContext(overrides: Partial<AuthContext> = {}): AuthContext {
     workspaceId: "ws123" as any,
     workspaceMemberId: "wm123" as any,
     role: "admin",
-    authMethod: "api-key",
+    authMethod: "oauth",
+    scopes: [],
     ...overrides,
   };
 }

@@ -35,7 +35,8 @@ bun run build            # Deploys to Convex production
 ├── convex/                      # Convex backend
 │   ├── schema.ts               # Database schema (all tables)
 │   ├── lib/                    # Shared utilities
-│   │   └── audit.ts            # Audit log helper
+│   │   ├── audit.ts            # Audit log helper
+│   │   └── auth.ts             # Authorization helper
 │   └── functions/              # Convex functions
 │       ├── workspaces/         # Workspace management + seeding
 │       ├── objectTypes/        # Dynamic object type definitions
@@ -52,12 +53,13 @@ bun run build            # Deploys to Convex production
 │       ├── http.ts             # HTTP server with auth middleware
 │       ├── server.ts           # MCP server with all tools
 │       ├── convex/client.ts    # Convex HTTP client
-│       └── auth/               # Authentication system
+│       └── auth/               # OAuth 2.1 Authentication
 │           ├── types.ts        # AuthContext, AuthProvider interfaces
 │           ├── manager.ts      # AuthManager orchestration
 │           ├── config.ts       # Environment-based configuration
+│           ├── scopes.ts       # Scope definitions and checking
+│           ├── errors.ts       # RFC 6750 compliant error responses
 │           ├── strategies/     # Auth strategies
-│           │   ├── api-key.ts  # X-API-Key header auth
 │           │   └── oauth.ts    # Bearer token + JWKS validation
 │           └── providers/      # OAuth provider configs
 │               ├── workos.ts
@@ -87,7 +89,7 @@ Step types:
 
 Variable interpolation: `{{record.field}}`, `{{previous.output}}`, `{{loopItem}}`, `{{loopIndex}}`
 
-### MCP Tools (35 total)
+### MCP Tools (32 total)
 
 Record operations:
 - `records.create`, `records.get`, `records.list`, `records.update`, `records.delete`
@@ -108,7 +110,7 @@ List operations:
 - `lists.getEntries`, `lists.addEntry`, `lists.removeEntry`
 
 Workspace:
-- `workspace.create` - Self-service workspace creation via MCP
+- `workspace.create` - Self-service workspace creation via MCP (requires `crm:admin` scope)
 
 Actions:
 - `actions.create` - Create automations with triggers, conditions, and 14 step types
@@ -118,12 +120,9 @@ Integrations:
 - `integrations.createWebhookEndpoint`, `integrations.listWebhookEndpoints`, `integrations.getWebhookLogs`
 - `integrations.createTemplate`, `integrations.listTemplates`, `integrations.sendRequest`, `integrations.getRequestLogs`
 
-Users & API Keys:
+Users:
 - `users.me` - Get current authenticated user and their workspaces
 - `users.updatePreferences` - Update user preferences (timezone, default workspace)
-- `apiKeys.create` - Create API key (secret shown only once)
-- `apiKeys.list` - List keys for workspace (without secrets)
-- `apiKeys.revoke` - Revoke an API key
 
 Audit:
 - `audit.getHistory`
@@ -135,15 +134,15 @@ Required in `.env`:
 CONVEX_URL=https://your-deployment.convex.cloud
 ```
 
-Optional auth provider configuration (choose one):
+OAuth provider configuration (choose one):
 ```bash
+# PropelAuth (recommended)
+MCP_AUTH_PROVIDER=propelauth
+PROPELAUTH_AUTH_URL=https://xxx.propelauthtest.com
+
 # WorkOS
 MCP_AUTH_PROVIDER=workos
 WORKOS_CLIENT_ID=client_xxx
-
-# PropelAuth
-MCP_AUTH_PROVIDER=propelauth
-PROPELAUTH_AUTH_URL=https://xxx.propelauthtest.com
 
 # Auth0
 MCP_AUTH_PROVIDER=auth0
@@ -154,17 +153,62 @@ AUTH0_AUDIENCE=https://api.agent-crm.example
 MCP_AUTH_PROVIDER=custom
 OAUTH_ISSUER=https://your-idp.com
 OAUTH_JWKS_URI=https://your-idp.com/.well-known/jwks.json
+OAUTH_AUDIENCE=https://api.agent-crm.example
 ```
 
-## Authentication
+Optional:
+```bash
+MCP_RESOURCE_URI=https://api.agent-crm.example/mcp  # For OAuth protected resource metadata
+PORT=3000                                           # HTTP server port
+HOSTNAME=0.0.0.0                                    # HTTP server hostname
+CORS_ALLOWED_ORIGINS=https://app.example.com        # Comma-separated allowed origins
+```
 
-The MCP server uses HTTP transport with pluggable authentication:
+## Authentication (OAuth 2.1)
 
-**API Key auth**: `X-API-Key: crm_<prefix>_<secret>` + `X-Workspace-Id` header
+The MCP server implements OAuth 2.1 as a Resource Server (RFC 9728 compliant). It validates JWT tokens but does not issue them - users authenticate with an external OAuth provider.
 
-**OAuth auth**: `Authorization: Bearer <jwt>` + `X-Workspace-Id` header
+### Request Format
 
-All tools automatically use auth context - no explicit `workspaceId` or `actorId` parameters needed.
+```
+Authorization: Bearer <jwt>
+X-Workspace-Id: <workspace_id>    # Optional if token contains workspace claim
+```
+
+### Workspace ID
+
+The workspace ID can be provided via:
+1. **Token claim** (for M2M clients): `workspace_id`, `org_id` (PropelAuth), or `https://agent-crm/workspace_id`
+2. **Header** (for interactive users): `X-Workspace-Id`
+
+Token claims take precedence over headers.
+
+### Scopes
+
+Coarse-grained scopes control access to tools:
+
+| Scope | Description | Tools |
+|-------|-------------|-------|
+| `crm:read` | Read-only access | `*.get`, `*.list`, `*.search`, `audit.*`, `users.me` |
+| `crm:write` | Read + write access | All `crm:read` tools + `*.create`, `*.update`, `*.delete`, `actions.execute` |
+| `crm:admin` | Full access | All tools including `workspace.create` |
+
+Scope hierarchy: `crm:admin` > `crm:write` > `crm:read`
+
+### Protected Resource Metadata
+
+The server exposes RFC 9728 metadata at:
+```
+GET /.well-known/oauth-protected-resource
+```
+
+Response includes supported scopes, bearer methods, and authorization server hints.
+
+### Error Responses (RFC 6750)
+
+- **401 Unauthorized**: Missing or invalid token. Includes `WWW-Authenticate` header with `error="invalid_token"`.
+- **403 Forbidden (insufficient_scope)**: Valid token but missing required scope. Includes `scope` parameter in `WWW-Authenticate`.
+- **403 Forbidden**: Workspace access denied.
 
 ## Multi-Tenancy
 

@@ -1,5 +1,10 @@
 /**
- * Shared validation utilities
+ * URL validation utilities for Convex actions
+ * Used for runtime SSRF protection when making HTTP requests
+ *
+ * Note: DNS rebinding attacks are not mitigated by this validation.
+ * For complete protection, URLs should be resolved and IPs validated
+ * immediately before making requests.
  */
 
 /**
@@ -76,7 +81,7 @@ function isPrivateIPv6Mapped(host: string): boolean {
 /**
  * Check if a hostname is blocked (private IPs, localhost, metadata services)
  */
-export function isBlockedHost(hostname: string): { blocked: boolean; reason?: string } {
+function isBlockedHost(hostname: string): { blocked: boolean; reason?: string } {
   const host = normalizeHostname(hostname);
 
   // IPv4 private ranges
@@ -147,14 +152,10 @@ export function isBlockedHost(hostname: string): { blocked: boolean; reason?: st
 }
 
 /**
- * Validate URL to prevent SSRF attacks
- * Blocks private IPs, localhost, and cloud metadata services
- *
- * Note: DNS rebinding attacks are not mitigated by this validation.
- * For complete protection, URLs should be resolved and IPs validated
- * immediately before making requests.
+ * Validate URL before making HTTP request
+ * Must be called AFTER variable interpolation for template URLs
  */
-export function validateUrl(url: string): { valid: boolean; error?: string } {
+export function validateUrlForFetch(url: string): { valid: boolean; error?: string } {
   try {
     // Decode URL-encoded characters in the full URL before parsing
     let decodedUrl = url;
@@ -186,165 +187,4 @@ export function validateUrl(url: string): { valid: boolean; error?: string } {
   } catch {
     return { valid: false, error: "Invalid URL format" };
   }
-}
-
-/**
- * Validate a URL pattern that may contain {{variable}} placeholders
- * Used for validating HTTP templates at creation time
- */
-export function validateUrlPattern(urlPattern: string): {
-  valid: boolean;
-  error?: string;
-  requiresRuntimeValidation: boolean;
-} {
-  const hasVariables = urlPattern.includes("{{");
-
-  // Check for protocol - must start with http:// or https://
-  if (!urlPattern.match(/^https?:\/\//i)) {
-    return {
-      valid: false,
-      error: "URL must start with http:// or https://",
-      requiresRuntimeValidation: false,
-    };
-  }
-
-  // Extract the host portion (between :// and first / or end)
-  const hostMatch = urlPattern.match(/^https?:\/\/([^/?#]+)/i);
-  if (!hostMatch) {
-    return {
-      valid: false,
-      error: "Invalid URL format",
-      requiresRuntimeValidation: false,
-    };
-  }
-
-  const hostPortion = hostMatch[1];
-
-  // Check for userinfo bypass attempts with variables: http://{{var}}@blocked-host/
-  if (hostPortion.includes("@")) {
-    const [userinfo, actualHost] = hostPortion.split("@");
-
-    // If userinfo contains variables, this could be a bypass attempt
-    if (userinfo.includes("{{")) {
-      // Check if the actual host is blocked
-      const actualHostWithoutPort = actualHost.split(":")[0];
-      if (!actualHostWithoutPort.includes("{{")) {
-        const hostCheck = isBlockedHost(actualHostWithoutPort);
-        if (hostCheck.blocked) {
-          return {
-            valid: false,
-            error: `Blocked host detected: ${hostCheck.reason}`,
-            requiresRuntimeValidation: false,
-          };
-        }
-      }
-    }
-
-    // Userinfo is generally suspicious, warn that runtime validation is needed
-    return {
-      valid: true,
-      error: undefined,
-      requiresRuntimeValidation: true,
-    };
-  }
-
-  // Get host without port
-  const hostWithoutPort = hostPortion.split(":")[0];
-
-  // If entire host is a variable, we can't validate at creation time
-  if (hostWithoutPort.match(/^\{\{[^}]+\}\}$/)) {
-    // Entire host is a variable - can't validate, but allow with warning
-    return {
-      valid: true,
-      error: undefined,
-      requiresRuntimeValidation: true,
-    };
-  }
-
-  // If host contains no variables, validate it normally
-  if (!hostWithoutPort.includes("{{")) {
-    const hostCheck = isBlockedHost(hostWithoutPort);
-    if (hostCheck.blocked) {
-      return {
-        valid: false,
-        error: hostCheck.reason,
-        requiresRuntimeValidation: false,
-      };
-    }
-  }
-
-  // URL pattern is valid
-  return {
-    valid: true,
-    error: undefined,
-    requiresRuntimeValidation: hasVariables,
-  };
-}
-
-/**
- * Check if error indicates provider is unavailable (network issue)
- */
-export function isNetworkError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const msg = error.message.toLowerCase();
-  return (
-    msg.includes("econnrefused") ||
-    msg.includes("enotfound") ||
-    msg.includes("etimedout") ||
-    msg.includes("timeout") ||
-    msg.includes("fetch failed") ||
-    msg.includes("network") ||
-    msg.includes("unreachable")
-  );
-}
-
-/**
- * Get CORS headers for a request origin
- */
-export function getCorsHeaders(
-  origin: string | null,
-  allowedOrigins: string[]
-): Record<string, string> {
-  const headers: Record<string, string> = {
-    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers":
-      "Content-Type, Authorization, X-Workspace-Id, Mcp-Session-Id",
-    "Access-Control-Max-Age": "86400",
-  };
-
-  // If no allowed origins configured, block cross-origin (safe default)
-  if (allowedOrigins.length === 0) {
-    return headers;
-  }
-
-  // Check if origin is in allowlist
-  if (origin && allowedOrigins.includes(origin)) {
-    headers["Access-Control-Allow-Origin"] = origin;
-    headers["Access-Control-Allow-Credentials"] = "true";
-  }
-
-  return headers;
-}
-
-/**
- * Validate auth context has required fields
- */
-export function validateAuthContext(data: unknown): {
-  valid: boolean;
-  error?: string;
-} {
-  if (!data || typeof data !== "object") {
-    return { valid: false, error: "Auth context is not an object" };
-  }
-
-  const obj = data as Record<string, unknown>;
-  const requiredFields = ["userId", "workspaceId", "workspaceMemberId", "role"];
-
-  for (const field of requiredFields) {
-    if (!obj[field]) {
-      return { valid: false, error: `Missing required field: ${field}` };
-    }
-  }
-
-  return { valid: true };
 }

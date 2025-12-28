@@ -4,7 +4,12 @@ import {
   createAuthManager,
   loadAuthConfig,
   createUnauthorizedResponse,
+  createInsufficientScopeResponse,
+  createForbiddenResponse,
+  getSupportedScopes,
+  AuthError,
   type AuthContext,
+  type AuthConfig,
 } from "./auth/index.js";
 import { getCorsHeaders } from "./lib/validation.js";
 
@@ -28,14 +33,35 @@ const ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || "")
   .filter(Boolean);
 
 /**
- * Handle OAuth protected resource metadata endpoint
+ * Handle OAuth protected resource metadata endpoint (RFC 9728)
+ * https://datatracker.ietf.org/doc/html/rfc9728
  */
-function handleWellKnown(resourceUri?: string): Response {
-  const metadata = {
-    resource: resourceUri ?? "https://api.agent-crm.example/mcp",
+function handleWellKnown(config: AuthConfig): Response {
+  const hostname = process.env.HOSTNAME ?? "localhost";
+  const port = process.env.PORT ?? "3000";
+  const defaultResource = `https://${hostname}:${port}/mcp`;
+
+  const metadata: Record<string, unknown> = {
+    // REQUIRED: The protected resource identifier
+    resource: config.resourceUri ?? defaultResource,
+
+    // Bearer token methods supported
     bearer_methods_supported: ["header"],
+
+    // Signing algorithms the resource server accepts
     resource_signing_alg_values_supported: ["RS256", "ES256"],
+
+    // Scopes that this resource server understands
+    scopes_supported: getSupportedScopes(),
   };
+
+  // Add authorization server hints if OAuth is configured
+  if (config.oauth) {
+    const authServers = getAuthorizationServers(config);
+    if (authServers.length > 0) {
+      metadata.authorization_servers = authServers;
+    }
+  }
 
   return new Response(JSON.stringify(metadata, null, 2), {
     status: 200,
@@ -44,6 +70,39 @@ function handleWellKnown(resourceUri?: string): Response {
       "Cache-Control": "max-age=3600",
     },
   });
+}
+
+/**
+ * Get authorization server URLs based on configured OAuth provider
+ */
+function getAuthorizationServers(config: AuthConfig): string[] {
+  if (!config.oauth) return [];
+
+  switch (config.oauth.provider) {
+    case "propelauth":
+      if (config.oauth.propelAuthUrl) {
+        return [config.oauth.propelAuthUrl];
+      }
+      break;
+
+    case "auth0":
+      if (config.oauth.auth0Domain) {
+        return [`https://${config.oauth.auth0Domain}`];
+      }
+      break;
+
+    case "workos":
+      // WorkOS authorization endpoint
+      return ["https://api.workos.com"];
+
+    case "custom":
+      if (config.oauth.issuer) {
+        return [config.oauth.issuer];
+      }
+      break;
+  }
+
+  return [];
 }
 
 /**
@@ -139,9 +198,9 @@ export async function startHttpServer(): Promise<void> {
         });
       }
 
-      // Well-known OAuth metadata
+      // Well-known OAuth metadata (RFC 9728)
       if (url.pathname === "/.well-known/oauth-protected-resource") {
-        return handleWellKnown(config.resourceUri);
+        return handleWellKnown(config);
       }
 
       // Health check
@@ -215,6 +274,31 @@ export async function startHttpServer(): Promise<void> {
           });
         } catch (error) {
           console.error("[MCP] Auth error:", error);
+
+          // Handle AuthError with proper RFC 6750 responses
+          if (error instanceof AuthError) {
+            // Insufficient scope → 403 with scope parameter
+            if (error.oauthError === "insufficient_scope") {
+              return createInsufficientScopeResponse(
+                error.message.replace("Insufficient scope: requires ", ""),
+                config.resourceUri
+              );
+            }
+
+            // Workspace access denied (403 without OAuth error)
+            if (error.statusCode === 403) {
+              return createForbiddenResponse(error.message);
+            }
+
+            // Invalid token, expired token, etc. → 401
+            return createUnauthorizedResponse(
+              error.message,
+              config.resourceUri,
+              error.oauthError
+            );
+          }
+
+          // Unknown errors → generic 401
           return createUnauthorizedResponse(
             error instanceof Error ? error.message : "Authentication failed",
             config.resourceUri

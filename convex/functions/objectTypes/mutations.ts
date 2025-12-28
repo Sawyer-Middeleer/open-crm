@@ -1,6 +1,7 @@
 import { mutation } from "../../_generated/server";
 import { v } from "convex/values";
 import { createAuditLog } from "../../lib/audit";
+import { assertActorInWorkspace } from "../../lib/auth";
 
 export const create = mutation({
   args: {
@@ -13,6 +14,9 @@ export const create = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     // Check for duplicate slug
     const existing = await ctx.db
       .query("objectTypes")
@@ -78,6 +82,9 @@ export const update = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const existing = await ctx.db.get(args.objectTypeId);
 
     if (!existing || existing.workspaceId !== args.workspaceId) {

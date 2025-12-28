@@ -2,6 +2,8 @@ import { mutation } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { v } from "convex/values";
 import { createAuditLog } from "../../lib/audit";
+import { assertActorInWorkspace } from "../../lib/auth";
+import { validateUrlForFetch } from "../../lib/urlValidation";
 import type { StepContext } from "../../lib/actionContext";
 import {
   createInitialContext,
@@ -22,6 +24,9 @@ export const execute = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     // Get the action
     const action = await ctx.db
       .query("actions")
@@ -744,6 +749,15 @@ async function executeStep(
           };
         };
 
+        // If URL is directly provided (not using template), validate it now
+        // Template-based URLs are validated at runtime in sendFromTemplate after interpolation
+        if (url && !templateSlug) {
+          const urlValidation = validateUrlForFetch(url);
+          if (!urlValidation.valid) {
+            return failure(startedAt, `SSRF protection: ${urlValidation.error}`);
+          }
+        }
+
         // Schedule the HTTP action (runs immediately after mutation completes)
         await ctx.scheduler.runAfter(
           0,
@@ -919,6 +933,9 @@ export const create = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     // Check for duplicate slug
     const existing = await ctx.db
       .query("actions")
@@ -1017,6 +1034,9 @@ export const createWithSlugs = mutation({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     // Resolve object type slug to ID
     let objectTypeId: string | undefined;
     if (args.trigger.objectType) {

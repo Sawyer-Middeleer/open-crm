@@ -1,11 +1,16 @@
 import { query } from "../../_generated/server";
 import { v } from "convex/values";
+import { assertActorInWorkspace } from "../../lib/auth";
 
 export const list = query({
   args: {
     workspaceId: v.id("workspaces"),
+    actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const objectTypes = await ctx.db
       .query("objectTypes")
       .withIndex("by_workspace_active", (q) =>
@@ -29,8 +34,12 @@ export const get = query({
   args: {
     workspaceId: v.id("workspaces"),
     slug: v.string(),
+    actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const objectType = await ctx.db
       .query("objectTypes")
       .withIndex("by_workspace_slug", (q) =>
@@ -46,8 +55,12 @@ export const getWithAttributes = query({
   args: {
     workspaceId: v.id("workspaces"),
     slug: v.string(),
+    actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const objectType = await ctx.db
       .query("objectTypes")
       .withIndex("by_workspace_slug", (q) =>

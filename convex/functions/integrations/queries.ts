@@ -1,5 +1,6 @@
 import { query, internalQuery } from "../../_generated/server";
 import { v } from "convex/values";
+import { assertActorInWorkspace } from "../../lib/auth";
 
 // ============================================================================
 // INCOMING WEBHOOKS
@@ -12,8 +13,12 @@ export const listIncomingWebhooks = query({
   args: {
     workspaceId: v.id("workspaces"),
     includeInactive: v.optional(v.boolean()),
+    actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     let webhooks = await ctx.db
       .query("incomingWebhooks")
       .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
@@ -42,8 +47,12 @@ export const getIncomingWebhook = query({
   args: {
     workspaceId: v.id("workspaces"),
     webhookId: v.id("incomingWebhooks"),
+    actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const webhook = await ctx.db.get(args.webhookId);
 
     if (!webhook || webhook.workspaceId !== args.workspaceId) {
@@ -87,8 +96,12 @@ export const getWebhookLogs = query({
     workspaceId: v.id("workspaces"),
     webhookId: v.optional(v.id("incomingWebhooks")),
     limit: v.optional(v.number()),
+    actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const limit = args.limit ?? 50;
 
     let logsQuery;
@@ -118,8 +131,12 @@ export const getWebhookLogs = query({
 export const listHttpTemplates = query({
   args: {
     workspaceId: v.id("workspaces"),
+    actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     return await ctx.db
       .query("httpTemplates")
       .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
@@ -134,8 +151,12 @@ export const getHttpTemplate = query({
   args: {
     workspaceId: v.id("workspaces"),
     templateId: v.id("httpTemplates"),
+    actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const template = await ctx.db.get(args.templateId);
 
     if (!template || template.workspaceId !== args.workspaceId) {
@@ -177,8 +198,12 @@ export const getHttpRequestLogs = query({
     templateId: v.optional(v.id("httpTemplates")),
     actionExecutionId: v.optional(v.id("actionExecutions")),
     limit: v.optional(v.number()),
+    actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const limit = args.limit ?? 50;
 
     // Query by workspace

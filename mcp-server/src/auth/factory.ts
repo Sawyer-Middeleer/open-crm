@@ -1,6 +1,5 @@
 import { AuthManager } from "./manager.js";
 import { loadAuthConfig, type AuthConfig } from "./config.js";
-import { ApiKeyProvider } from "./strategies/api-key.js";
 import {
   createWorkOSProvider,
   createPropelAuthProvider,
@@ -10,14 +9,11 @@ import {
 import type { AuthProvider } from "./types.js";
 
 /**
- * Create AuthManager with providers based on configuration
+ * Create AuthManager with OAuth providers based on configuration
  */
 export function createAuthManager(config?: AuthConfig): AuthManager {
   const resolvedConfig = config ?? loadAuthConfig();
   const providers: AuthProvider[] = [];
-
-  // Always add API key provider
-  providers.push(new ApiKeyProvider(resolvedConfig.convexUrl));
 
   // Add OAuth provider if configured
   if (resolvedConfig.oauth) {
@@ -30,6 +26,12 @@ export function createAuthManager(config?: AuthConfig): AuthManager {
     if (oauthProvider) {
       providers.push(oauthProvider);
     }
+  }
+
+  if (providers.length === 0) {
+    throw new Error(
+      "No OAuth provider configured. Set MCP_AUTH_PROVIDER environment variable."
+    );
   }
 
   return new AuthManager({ providers });

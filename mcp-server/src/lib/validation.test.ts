@@ -1,6 +1,8 @@
 import { describe, test, expect } from "bun:test";
 import {
   validateUrl,
+  validateUrlPattern,
+  isBlockedHost,
   isNetworkError,
   getCorsHeaders,
   validateAuthContext,
@@ -20,7 +22,7 @@ describe("validateUrl", () => {
   test("blocks localhost", () => {
     const result = validateUrl("http://localhost:3000");
     expect(result.valid).toBe(false);
-    expect(result.error).toContain("Private");
+    expect(result.error).toContain("Localhost");
   });
 
   test("blocks 127.0.0.1", () => {
@@ -56,7 +58,7 @@ describe("validateUrl", () => {
   test("blocks cloud metadata services", () => {
     const result = validateUrl("http://metadata.google.internal/");
     expect(result.valid).toBe(false);
-    expect(result.error).toContain("Metadata");
+    expect(result.error).toContain("metadata");
   });
 
   test("blocks non-http protocols - ftp", () => {
@@ -81,6 +83,229 @@ describe("validateUrl", () => {
     const result = validateUrl("");
     expect(result.valid).toBe(false);
     expect(result.error).toContain("Invalid");
+  });
+
+  // New tests for extended blocking
+  test("blocks IPv6 loopback ::1", () => {
+    const result = validateUrl("http://[::1]:8080");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Private IPv6");
+  });
+
+  test("blocks IPv6-mapped IPv4 loopback", () => {
+    const result = validateUrl("http://[::ffff:127.0.0.1]");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Private IPv6-mapped");
+  });
+
+  test("blocks IPv6-mapped private IP - 10.x.x.x", () => {
+    const result = validateUrl("http://[::ffff:10.0.0.1]");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Private IPv6-mapped");
+  });
+
+  test("blocks IPv6-mapped private IP - 172.16.x.x", () => {
+    const result = validateUrl("http://[::ffff:172.16.0.1]");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Private IPv6-mapped");
+  });
+
+  test("blocks IPv6-mapped private IP - 192.168.x.x", () => {
+    const result = validateUrl("http://[::ffff:192.168.1.1]");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Private IPv6-mapped");
+  });
+
+  test("blocks IPv6-mapped link-local", () => {
+    const result = validateUrl("http://[::ffff:169.254.169.254]");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Private IPv6-mapped");
+  });
+
+  test("blocks link-local IPv6 fe80:", () => {
+    const result = validateUrl("http://[fe80::1]");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Private IPv6");
+  });
+
+  test("blocks unique local address fd00:", () => {
+    const result = validateUrl("http://[fd00::1]");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Private IPv6");
+  });
+
+  test("blocks AWS EC2 IPv6 metadata", () => {
+    const result = validateUrl("http://[fd00:ec2::254]");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Private IPv6");
+  });
+
+  test("blocks Azure alternate metadata IP", () => {
+    const result = validateUrl("http://169.254.169.253");
+    expect(result.valid).toBe(false);
+    // Caught by IPv4 link-local pattern (169.254.x.x)
+    expect(result.error).toContain("Private");
+  });
+
+  test("blocks Alibaba Cloud metadata IP", () => {
+    const result = validateUrl("http://100.100.100.200");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("metadata");
+  });
+
+  test("blocks Alibaba Cloud metadata hostname", () => {
+    const result = validateUrl("http://metadata.alibaba.com");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("metadata");
+  });
+
+  test("blocks metadata.internal hostname", () => {
+    const result = validateUrl("http://metadata.internal");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("metadata");
+  });
+
+  test("blocks URL with userinfo (username/password bypass)", () => {
+    const result = validateUrl("http://user:pass@example.com");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("userinfo");
+  });
+
+  test("blocks .localhost subdomains", () => {
+    const result = validateUrl("http://evil.localhost");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Localhost");
+  });
+});
+
+describe("isBlockedHost", () => {
+  test("blocks IPv4 loopback", () => {
+    expect(isBlockedHost("127.0.0.1").blocked).toBe(true);
+    expect(isBlockedHost("127.255.255.255").blocked).toBe(true);
+  });
+
+  test("blocks private IPv4 ranges", () => {
+    expect(isBlockedHost("10.0.0.1").blocked).toBe(true);
+    expect(isBlockedHost("172.16.0.1").blocked).toBe(true);
+    expect(isBlockedHost("172.31.255.255").blocked).toBe(true);
+    expect(isBlockedHost("192.168.1.1").blocked).toBe(true);
+  });
+
+  test("allows public IPv4 ranges", () => {
+    expect(isBlockedHost("8.8.8.8").blocked).toBe(false);
+    expect(isBlockedHost("172.15.0.1").blocked).toBe(false); // Just outside 172.16.0.0/12
+    expect(isBlockedHost("172.32.0.1").blocked).toBe(false); // Just outside 172.16.0.0/12
+  });
+
+  test("blocks IPv6 loopback variants", () => {
+    expect(isBlockedHost("::1").blocked).toBe(true);
+    expect(isBlockedHost("[::1]").blocked).toBe(true);
+    expect(isBlockedHost("0:0:0:0:0:0:0:1").blocked).toBe(true);
+  });
+
+  test("blocks IPv6-mapped IPv4 private addresses (decimal notation)", () => {
+    expect(isBlockedHost("::ffff:127.0.0.1").blocked).toBe(true);
+    expect(isBlockedHost("::ffff:10.0.0.1").blocked).toBe(true);
+    expect(isBlockedHost("::ffff:172.16.0.1").blocked).toBe(true);
+    expect(isBlockedHost("::ffff:192.168.1.1").blocked).toBe(true);
+    expect(isBlockedHost("::ffff:169.254.169.254").blocked).toBe(true);
+  });
+
+  test("blocks IPv6-mapped IPv4 private addresses (hex notation)", () => {
+    // These are the URL-parsed forms of the above addresses
+    expect(isBlockedHost("::ffff:7f00:1").blocked).toBe(true); // 127.0.0.1
+    expect(isBlockedHost("::ffff:a00:1").blocked).toBe(true); // 10.0.0.1
+    expect(isBlockedHost("::ffff:ac10:1").blocked).toBe(true); // 172.16.0.1
+    expect(isBlockedHost("::ffff:c0a8:101").blocked).toBe(true); // 192.168.1.1
+    expect(isBlockedHost("::ffff:a9fe:a9fe").blocked).toBe(true); // 169.254.169.254
+  });
+
+  test("blocks cloud metadata IPs", () => {
+    expect(isBlockedHost("169.254.169.254").blocked).toBe(true);
+    expect(isBlockedHost("169.254.169.253").blocked).toBe(true);
+    expect(isBlockedHost("100.100.100.200").blocked).toBe(true);
+  });
+
+  test("blocks cloud metadata hostnames", () => {
+    expect(isBlockedHost("metadata.google.internal").blocked).toBe(true);
+    expect(isBlockedHost("metadata.alibaba.com").blocked).toBe(true);
+    expect(isBlockedHost("metadata.internal").blocked).toBe(true);
+    expect(isBlockedHost("metadata.tencentyun.com").blocked).toBe(true);
+  });
+
+  test("blocks localhost and subdomains", () => {
+    expect(isBlockedHost("localhost").blocked).toBe(true);
+    expect(isBlockedHost("evil.localhost").blocked).toBe(true);
+  });
+
+  test("allows public hostnames", () => {
+    expect(isBlockedHost("example.com").blocked).toBe(false);
+    expect(isBlockedHost("api.example.com").blocked).toBe(false);
+  });
+});
+
+describe("validateUrlPattern", () => {
+  test("allows valid URLs without variables", () => {
+    const result = validateUrlPattern("https://api.example.com/webhook");
+    expect(result.valid).toBe(true);
+    expect(result.requiresRuntimeValidation).toBe(false);
+  });
+
+  test("allows URLs with valid variable usage in path", () => {
+    const result = validateUrlPattern("https://api.example.com/users/{{userId}}");
+    expect(result.valid).toBe(true);
+    expect(result.requiresRuntimeValidation).toBe(true);
+  });
+
+  test("allows URLs with variables in query string", () => {
+    const result = validateUrlPattern("https://api.example.com/search?q={{query}}");
+    expect(result.valid).toBe(true);
+    expect(result.requiresRuntimeValidation).toBe(true);
+  });
+
+  test("flags entire host as variable requiring runtime validation", () => {
+    const result = validateUrlPattern("http://{{host}}/path");
+    expect(result.valid).toBe(true);
+    expect(result.requiresRuntimeValidation).toBe(true);
+  });
+
+  test("blocks userinfo bypass attempt with blocked host", () => {
+    const result = validateUrlPattern("http://{{var}}@169.254.169.254/");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Blocked");
+  });
+
+  test("blocks userinfo bypass with localhost", () => {
+    const result = validateUrlPattern("http://{{var}}@localhost/");
+    expect(result.valid).toBe(false);
+  });
+
+  test("blocks static blocked hosts", () => {
+    expect(validateUrlPattern("http://127.0.0.1/").valid).toBe(false);
+    expect(validateUrlPattern("http://localhost/").valid).toBe(false);
+    expect(validateUrlPattern("http://169.254.169.254/").valid).toBe(false);
+  });
+
+  test("blocks non-http protocols", () => {
+    const result = validateUrlPattern("ftp://example.com/file");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("http");
+  });
+
+  test("blocks file:// protocol", () => {
+    const result = validateUrlPattern("file:///etc/passwd");
+    expect(result.valid).toBe(false);
+  });
+
+  test("rejects URLs without protocol", () => {
+    const result = validateUrlPattern("example.com/path");
+    expect(result.valid).toBe(false);
+  });
+
+  test("allows URLs with port and variables", () => {
+    const result = validateUrlPattern("https://api.example.com:8080/v{{version}}/users");
+    expect(result.valid).toBe(true);
+    expect(result.requiresRuntimeValidation).toBe(true);
   });
 });
 

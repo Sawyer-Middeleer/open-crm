@@ -1,12 +1,17 @@
 import { query } from "../../_generated/server";
 import { v } from "convex/values";
+import { assertActorInWorkspace } from "../../lib/auth";
 
 export const get = query({
   args: {
     workspaceId: v.id("workspaces"),
     recordId: v.id("records"),
+    actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const record = await ctx.db.get(args.recordId);
 
     if (!record || record.workspaceId !== args.workspaceId) {
@@ -35,8 +40,12 @@ export const list = query({
     objectTypeSlug: v.string(),
     limit: v.optional(v.number()),
     cursor: v.optional(v.string()),
+    actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     // Get the object type
     const objectType = await ctx.db
       .query("objectTypes")
@@ -167,8 +176,12 @@ export const search = query({
     sortBy: v.optional(v.string()),
     sortOrder: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
     limit: v.optional(v.number()),
+    actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const limit = args.limit ?? 50;
 
     // 1. Get object type if specified
@@ -282,8 +295,12 @@ export const getRelated = query({
     workspaceId: v.id("workspaces"),
     recordId: v.id("records"),
     relationship: v.optional(v.string()),
+    actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     // 1. Get source record
     const record = await ctx.db.get(args.recordId);
     if (!record || record.workspaceId !== args.workspaceId) {
@@ -478,8 +495,12 @@ export const bulkInspect = query({
     workspaceId: v.id("workspaces"),
     sessionId: v.id("bulkValidationSessions"),
     indices: v.array(v.number()),
+    actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
     const session = await ctx.db.get(args.sessionId);
 
     if (!session) {
