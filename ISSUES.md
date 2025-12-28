@@ -18,8 +18,6 @@ This document contains all issues identified during a comprehensive code review 
 
 ## Critical Issues
 
-These issues must be fixed before open source release.
-
 ### 1. ~~No Authorization Checks in Queries/Mutations~~ ✅ FIXED
 
 ### 2. ~~Actor ID Not Validated Against Workspace~~ ✅ FIXED
@@ -34,39 +32,9 @@ These issues must be fixed before open source release.
 
 ### 7. ~~Timing Attack on API Key Hash Comparison~~ ✅ NO LONGER RELEVANT
 
-### 8. Missing `addedBy` Field in Action List Entries
+### 8. ~~Missing `addedBy` Field in Action List Entries~~ ✅ FIXED
 
-**Location:** `convex/functions/actions/mutations.ts:454-466`
-
-**Description:** When action steps add list entries, the required `addedBy` field is missing, violating the schema.
-
-**Example:**
-```typescript
-const entryId = await ctx.db.insert("listEntries", {
-  workspaceId: context.workspaceId as never,
-  listId: listDoc._id,
-  recordId: targetRecordId as never,
-  parentRecordId: parentRecordId as never,
-  data: data ?? {},
-  createdAt: now,
-  updatedAt: now,
-  // MISSING: addedBy is required by schema!
-});
-```
-
-**Recommendation:** Add `addedBy` field using the action executor's member ID.
-
----
-
-### 9. No Scope Enforcement in MCP Server
-
-**Location:** `mcp-server/src/server.ts:23-47`
-
-**Description:** Scopes are extracted from authentication but never checked in tool handlers. All authenticated users can perform all operations regardless of assigned scopes.
-
-**Recommendation:** Implement scope checking in each tool handler before executing operations.
-
----
+### 9. ~~No Scope Enforcement in MCP Server~~ ✅ FIXED
 
 ## High Severity Issues
 

@@ -462,6 +462,7 @@ async function executeStep(
           listId: listDoc._id,
           recordId: targetRecordId as never,
           parentRecordId: parentRecordId as never,
+          addedBy: context.actorId as never,
           data: data ?? {},
           createdAt: now,
           updatedAt: now,
