@@ -34,9 +34,16 @@ bun run build            # Deploys to Convex production
 /
 ├── convex/                     # Convex backend
 │   ├── schema.ts               # Database schema (all tables)
+│   ├── crons.ts                # Cron job definitions (scheduled actions)
 │   ├── lib/                    # Shared utilities
+│   │   ├── actionContext.ts    # Action execution context builder
 │   │   ├── audit.ts            # Audit log helper
-│   │   └── auth.ts             # Authorization helper
+│   │   ├── auth.ts             # Authorization helper
+│   │   ├── cron.ts             # Cron expression parser
+│   │   ├── interpolation.ts    # Template variable interpolation
+│   │   ├── triggers.ts         # Action trigger evaluation
+│   │   ├── urlValidation.ts    # SSRF protection for HTTP requests
+│   │   └── validation.ts       # Input validation helpers
 │   └── functions/              # Convex functions
 │       ├── workspaces/         # Workspace management + seeding
 │       ├── objectTypes/        # Dynamic object type definitions
@@ -44,6 +51,9 @@ bun run build            # Deploys to Convex production
 │       ├── records/            # Record CRUD
 │       ├── lists/              # Many-to-many lists
 │       ├── actions/            # Composable automation actions
+│       │   ├── mutations.ts    # Action CRUD + execution
+│       │   ├── queries.ts      # Action queries
+│       │   └── scheduled.ts    # Scheduled action executor
 │       ├── auth/               # Auth queries and mutations
 │       └── audit/              # Audit log queries
 │
@@ -53,6 +63,10 @@ bun run build            # Deploys to Convex production
 │       ├── http.ts             # HTTP server with auth middleware
 │       ├── server.ts           # MCP server with all tools
 │       ├── convex/client.ts    # Convex HTTP client
+│       ├── lib/                # Server utilities
+│       │   ├── rateLimiter.ts  # IP and user rate limiting
+│       │   ├── validation.ts   # URL/SSRF validation
+│       │   └── validators.ts   # Input validators
 │       └── auth/               # OAuth 2.1 Authentication
 │           ├── types.ts        # AuthContext, AuthProvider interfaces
 │           ├── manager.ts      # AuthManager orchestration
@@ -79,6 +93,12 @@ bun run build            # Deploys to Convex production
 **Audit Trail**: Every mutation logs to `auditLogs` with before/after snapshots, actor, and timestamp.
 
 **Actions**: Composable automations using predefined step types. No user code execution.
+
+Trigger types:
+- **Lifecycle**: `onCreate`, `onUpdate`, `onDelete`, `onFieldChange` (with watched fields)
+- **List**: `onListAdd`, `onListRemove` (when records added/removed from lists)
+- **Scheduled**: Cron-based execution with optional record filter conditions
+- **Manual**: Triggered via `actions.execute` MCP tool
 
 Step types:
 - **Field ops**: `updateField`, `clearField`, `copyField`, `transformField`
@@ -136,13 +156,13 @@ CONVEX_URL=https://your-deployment.convex.cloud
 
 OAuth provider configuration (choose one):
 ```bash
-# PropelAuth (recommended)
-MCP_AUTH_PROVIDER=propelauth
-PROPELAUTH_AUTH_URL=https://xxx.propelauthtest.com
-
 # WorkOS
 MCP_AUTH_PROVIDER=workos
 WORKOS_CLIENT_ID=client_xxx
+
+# PropelAuth
+MCP_AUTH_PROVIDER=propelauth
+PROPELAUTH_AUTH_URL=https://xxx.propelauthtest.com
 
 # Auth0
 MCP_AUTH_PROVIDER=auth0
@@ -162,6 +182,14 @@ MCP_RESOURCE_URI=https://api.agent-crm.example/mcp  # For OAuth protected resour
 PORT=3000                                           # HTTP server port
 HOSTNAME=0.0.0.0                                    # HTTP server hostname
 CORS_ALLOWED_ORIGINS=https://app.example.com        # Comma-separated allowed origins
+
+# Session management
+SESSION_TTL_MINUTES=30                              # Session timeout (default: 30)
+SESSION_CLEANUP_MINUTES=5                           # Cleanup interval (default: 5)
+
+# Rate limiting (requests per minute)
+IP_RATE_LIMIT_PER_MINUTE=100                        # Per-IP limit (default: 100)
+USER_RATE_LIMIT_PER_MINUTE=300                      # Per-user limit (default: 300)
 ```
 
 ## Authentication (OAuth 2.1)

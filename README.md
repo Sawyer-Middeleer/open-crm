@@ -61,7 +61,7 @@ The HTTP MCP server will start on `http://localhost:3000/mcp`.
 
 ### 5. Create a User and Workspace
 
-The MCP server requires authentication. First, create a user via the Convex dashboard:
+The MCP server requires OAuth authentication. For development, create a user via the Convex dashboard:
 
 1. Go to **Functions** → `auth/mutations:upsertFromOAuth`
 2. Run with your OAuth provider details, or for development:
@@ -74,38 +74,40 @@ The MCP server requires authentication. First, create a user via the Convex dash
    }
    ```
 
-3. Create an API key via `auth/mutations:createApiKey` (note the user ID from step 2)
+3. Configure an OAuth provider (see Authentication below)
 
-4. Use the API key to create a workspace via the MCP `workspace.create` tool
+4. Use the MCP `workspace.create` tool to create a workspace
 
 ## Authentication
 
-The MCP server supports two authentication methods:
-
-### API Key Authentication
+The MCP server uses OAuth 2.1 (RFC 9728 compliant). Configure an OAuth provider in your `.env`:
 
 ```bash
-curl -X POST http://localhost:3000/mcp \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: crm_<prefix>_<secret>" \
-  -H "X-Workspace-Id: <workspace_id>" \
-  -d '{"jsonrpc": "2.0", ...}'
-```
-
-### OAuth Authentication
-
-Configure an OAuth provider (WorkOS, PropelAuth, Auth0, or custom JWKS):
-
-```bash
-# In .env
+# WorkOS
 MCP_AUTH_PROVIDER=workos
 WORKOS_CLIENT_ID=client_xxx
+
+# PropelAuth
+MCP_AUTH_PROVIDER=propelauth
+PROPELAUTH_AUTH_URL=https://xxx.propelauthtest.com
+
+# Auth0
+MCP_AUTH_PROVIDER=auth0
+AUTH0_DOMAIN=your-tenant.auth0.com
+AUTH0_AUDIENCE=https://api.agent-crm.example
+
+# Custom JWKS
+MCP_AUTH_PROVIDER=custom
+OAUTH_ISSUER=https://your-idp.com
+OAUTH_JWKS_URI=https://your-idp.com/.well-known/jwks.json
+OAUTH_AUDIENCE=https://api.agent-crm.example
 ```
 
 Then use Bearer tokens:
 
 ```bash
 curl -X POST http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
   -H "Authorization: Bearer <jwt_token>" \
   -H "X-Workspace-Id: <workspace_id>" \
   -d '{"jsonrpc": "2.0", ...}'
@@ -174,14 +176,11 @@ The server exposes a standard MCP HTTP endpoint at `/mcp`. Connect using any MCP
 | `integrations.sendRequest` | Send HTTP request |
 | `integrations.getRequestLogs` | Get outgoing request logs |
 
-### Users & API Keys
+### Users
 | Tool | Description |
 |------|-------------|
 | `users.me` | Get current authenticated user info |
 | `users.updatePreferences` | Update user preferences |
-| `apiKeys.create` | Create new API key (secret shown once) |
-| `apiKeys.list` | List API keys (without secrets) |
-| `apiKeys.revoke` | Revoke an API key |
 
 ### Audit
 | Tool | Description |
