@@ -93,145 +93,33 @@ Agent CRM is a headless, MCP-first CRM for AI agents. Core requirements:
 
 ## Medium Severity Issues
 
-### 31. Duplicate HTTP Request Logic in httpActions.ts
+### 31. ~~Duplicate HTTP Request Logic in httpActions.ts~~ ✅ FIXED
 
-**Location:** `convex/functions/integrations/httpActions.ts`
+### 32. ~~Duplicate Workspace Listing Functions~~ ✅ FIXED
 
-**Problem:** `sendRequest` (lines 223-334) duplicates ~90% of the code from `sendHttpRequest` (lines 92-217):
-- Both validate URLs with `validateUrlForFetch`
-- Both build auth headers with `buildAuthHeader`
-- Both make fetch calls with same error handling
-- Both log to `httpRequestLogs` with same structure
+### 33. ~~Overly Long seedSystemObjectTypes Function~~ ✅ FIXED
 
-**Impact:** ~110 lines of duplicated code. Bug fixes must be applied twice.
+Refactored to use data-driven seed definitions (`SEED_OBJECT_TYPES`, `SEED_REFERENCES`, `SEED_LISTS`) with iteration. Function reduced from ~315 lines to ~100 lines + ~130 lines of structured data. Much more readable and maintainable.
 
-**Recommendation:** Extract shared logic into a private helper function:
-```typescript
-async function executeHttpRequest(args: SharedRequestArgs): Promise<HttpResult>
-```
+### 34. ~~Triplicated getNestedValue Helper~~ ✅ FIXED
 
-### 32. Duplicate Workspace Listing Functions
-
-**Location:**
-- `convex/functions/workspaces/queries.ts:33-59` (`listForUser`)
-- `convex/functions/auth/queries.ts:78-101` (`listUserWorkspaces`)
-
-**Problem:** Both functions perform identical operations:
-1. Query `workspaceMembers` by user
-2. Fetch each workspace
-3. Return workspace with role
-
-**Difference:** One returns `{ id, name, slug, role }`, other returns `{ ...workspace, role, memberId }`
-
-**Recommendation:** Remove one function. Keep `listUserWorkspaces` (more complete), update callers.
-
-**Estimated LOC reduction:** ~25 lines
-
-### 33. Overly Long seedSystemObjectTypes Function
-
-**Location:** `convex/functions/workspaces/mutations.ts:82-397`
-
-**Problem:** 315 lines of repetitive database inserts for seeding People, Companies, Deals object types with their attributes and lists.
-
-**Pattern repeated 20+ times:**
-```typescript
-await ctx.db.insert("attributes", {
-  workspaceId,
-  objectTypeId: ...,
-  name: "...",
-  slug: "...",
-  type: "...",
-  // ... same fields every time
-});
-```
-
-**Recommendation:** Define seed data as structured arrays, iterate with a helper:
-```typescript
-const SEED_DATA = { objectTypes: [...], attributes: [...], lists: [...] };
-for (const ot of SEED_DATA.objectTypes) await insertObjectType(ctx, ot);
-```
-
-**Estimated LOC reduction:** ~200 lines
-
-### 34. Triplicated getNestedValue Helper
-
-**Location:**
-- `convex/functions/integrations/httpActions.ts:541-555`
-- `convex/functions/integrations/webhookHandlers.ts:8-23`
-- `convex/lib/actionContext.ts:143-180` (similar pattern)
-
-**Problem:** Same dot-notation path resolution logic implemented three times.
-
-**Recommendation:** Extract to `convex/lib/interpolation.ts` and import.
-
-**Estimated LOC reduction:** ~30 lines
+Extracted to `convex/lib/interpolation.ts`. All three files now import the shared utility. Supports both string path and string array formats.
 
 ### 35. ~~triggerActionFromWebhook Creates Pending Execution Without Execution~~ ✅ FIXED
 
 Fixed by requiring `recordId` and `actorId` in webhook payload. The handler now validates both, then calls the shared `executeInternal` mutation which runs all action steps. Breaking change: `triggerAction` webhooks must now include `recordId` and `actorId` in the JSON payload.
 
-### 36. createRecordFromWebhook Uses Arbitrary Workspace Member as Actor
+### 36. ~~createRecordFromWebhook Uses Arbitrary Workspace Member as Actor~~ ✅ FIXED
 
-**Location:** `convex/functions/integrations/webhookHandlers.ts:76-89`
+Now requires `actorId` in webhook payload for `createRecord` handlers. Breaking change: webhooks using `createRecord` must now include `actorId` in the JSON payload for proper attribution.
 
-**Problem:** When no actorId is provided, the function queries for "any workspace member" to use as the creator:
-```typescript
-const member = await ctx.db
-  .query("workspaceMembers")
-  .withIndex("by_workspace", ...)
-  .first();
-```
+### 37. ~~Missing Index for httpRequestLogs Filtering~~ ✅ FIXED
 
-**Security concern:** Records created by webhooks are attributed to a random user, not a system account. This pollutes audit logs and could attribute actions to the wrong person.
+Added `by_workspace_template` index to schema. Updated `getHttpRequestLogs` query to use appropriate index based on filter parameters (templateId, actionExecutionId, or workspace-only).
 
-**Recommendation:** Create a dedicated "system" or "webhook" actor for each workspace, or require explicit actorId in webhook configuration.
+### 38. ~~N+1 Query Pattern in Audit Log Enrichment~~ ✅ FIXED
 
-### 37. Missing Index for httpRequestLogs Filtering
-
-**Location:** `convex/functions/integrations/queries.ts:209-227`
-
-**Problem:** `getHttpRequestLogs` queries by workspace, then filters by templateId in memory:
-```typescript
-let logs = await ctx.db
-  .query("httpRequestLogs")
-  .withIndex("by_workspace", ...)
-  ...
-if (args.templateId) {
-  logs = logs.filter((l) => l.templateId === args.templateId);
-}
-```
-
-**Impact:** Inefficient for workspaces with many request logs.
-
-**Recommendation:** Add composite index `by_workspace_template` to schema:
-```typescript
-.index("by_workspace_template", ["workspaceId", "templateId"])
-```
-
-### 38. N+1 Query Pattern in Audit Log Enrichment
-
-**Location:** `convex/functions/audit/queries.ts:30-51`
-
-**Problem:** For each log entry, executes 2 queries:
-```typescript
-const enrichedLogs = await Promise.all(
-  logs.map(async (log) => {
-    const member = await ctx.db.get(log.actorId);  // Query 1
-    const user = await ctx.db.get(member.userId);   // Query 2
-    ...
-  })
-);
-```
-
-**Impact:** 50 log entries = 100 database queries.
-
-**Recommendation:** Batch the lookups:
-```typescript
-const memberIds = [...new Set(logs.map(l => l.actorId).filter(Boolean))];
-const members = await Promise.all(memberIds.map(id => ctx.db.get(id)));
-const memberMap = new Map(members.map(m => [m._id, m]));
-// Similar for users
-```
+Refactored `getRecordHistory` to batch fetch members and users using Maps. Now makes 2 batched queries (unique members + unique users) instead of 2N queries.
 
 ---
 
@@ -342,31 +230,3 @@ function registerTool(name, description, schema, handler) {
 **Analysis:** 189 lines of URL validation covering IPv4, IPv6, IPv6-mapped-IPv4, cloud metadata, etc.
 
 **Verdict:** Keep. Security code should be thorough. Each blocked pattern addresses real attack vectors.
-
----
-
-## Final Assessment
-
-| Metric | Value |
-|--------|-------|
-| Total potential LOC reduction | ~600-700 lines (~15%) |
-| Complexity score | Medium |
-| Code duplication | Moderate (3-4 areas) |
-| Security posture | Good (issues addressed) |
-| Type safety | Good (some `as any` acceptable) |
-
-### Recommended Priority
-
-**High priority (before release):**
-- ~~Issue #35: Decide on webhook action execution (incomplete feature)~~ ✅ FIXED
-- Issue #36: Fix webhook actor attribution (audit integrity)
-
-**Medium priority (should fix):**
-- Issue #31, #32, #34: Consolidate duplicate code
-- Issue #33: Refactor seed function (readability)
-- Issue #37, #38: Add missing indexes and fix N+1
-
-**Low priority (nice to have):**
-- Issue #41: Tool handler factory (boilerplate reduction)
-- Issue #40: Input length validation
-- Issue #39: Remove unused function

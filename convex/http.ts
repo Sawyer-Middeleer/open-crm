@@ -1,6 +1,7 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { computeHmacSignature } from "./functions/integrations/mutations";
 
 const http = httpRouter();
@@ -111,6 +112,27 @@ http.route({
       let result: { createdRecordId?: string; triggeredActionId?: string; actionExecutionId?: string } = {};
 
       if (webhook.handler.type === "createRecord" && webhook.handler.objectTypeId) {
+        // Require actorId in payload for record creation attribution
+        const p = payload as Record<string, unknown>;
+        if (!p.actorId || typeof p.actorId !== "string") {
+          await ctx.runMutation(internal.functions.integrations.mutations.logIncomingWebhook, {
+            workspaceId,
+            webhookId: webhook._id,
+            headers: Object.fromEntries(request.headers.entries()),
+            payload,
+            sourceIp,
+            status: "failed",
+            error: "Webhook payload must include 'actorId' for createRecord handler",
+          });
+
+          return new Response(JSON.stringify({
+            error: "Webhook payload must include 'actorId' (workspaceMember ID) for proper attribution",
+          }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
         // Create a new record from the webhook payload
         const recordId = await ctx.runMutation(
           internal.functions.integrations.webhookHandlers.createRecordFromWebhook,
@@ -119,6 +141,7 @@ http.route({
             objectTypeId: webhook.handler.objectTypeId,
             fieldMapping: webhook.handler.fieldMapping,
             payload,
+            actorId: p.actorId as Id<"workspaceMembers">,
           }
         );
         result.createdRecordId = recordId;

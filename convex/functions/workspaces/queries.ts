@@ -30,30 +30,4 @@ export const getBySlug = query({
   },
 });
 
-export const listForUser = query({
-  args: {
-    userId: v.id("users"),
-  },
-  handler: async (ctx, args) => {
-    const memberships = await ctx.db
-      .query("workspaceMembers")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect();
-
-    const workspaces = await Promise.all(
-      memberships.map(async (m) => {
-        const workspace = await ctx.db.get(m.workspaceId);
-        return workspace
-          ? {
-              id: workspace._id,
-              name: workspace.name,
-              slug: workspace.slug,
-              role: m.role,
-            }
-          : null;
-      })
-    );
-
-    return workspaces.filter(Boolean);
-  },
-});
+// listForUser removed - use auth/queries.listUserWorkspaces instead (more complete)

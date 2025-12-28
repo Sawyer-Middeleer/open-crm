@@ -2,6 +2,7 @@ import { internalMutation } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { v } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
+import { getNestedValue } from "../../lib/interpolation";
 
 interface ActionExecutionResult {
   executionId: Id<"actionExecutions">;
@@ -17,26 +18,6 @@ interface ActionExecutionResult {
 }
 
 /**
- * Get nested value from object using dot notation path
- */
-function getNestedValue(obj: unknown, path: string): unknown {
-  const parts = path.split(".");
-  let current: unknown = obj;
-
-  for (const part of parts) {
-    if (current === null || current === undefined) {
-      return undefined;
-    }
-    if (typeof current !== "object") {
-      return undefined;
-    }
-    current = (current as Record<string, unknown>)[part];
-  }
-
-  return current;
-}
-
-/**
  * Create a record from webhook payload using field mapping
  */
 export const createRecordFromWebhook = internalMutation({
@@ -45,7 +26,7 @@ export const createRecordFromWebhook = internalMutation({
     objectTypeId: v.id("objectTypes"),
     fieldMapping: v.optional(v.any()),
     payload: v.any(),
-    actorId: v.optional(v.id("workspaceMembers")),
+    actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
     // Get object type to understand field definitions
@@ -86,30 +67,13 @@ export const createRecordFromWebhook = internalMutation({
       }
     }
 
-    // Get a system actor or use provided actor
-    let createdBy = args.actorId;
-    if (!createdBy) {
-      // Find any workspace member to use as actor
-      const member = await ctx.db
-        .query("workspaceMembers")
-        .withIndex("by_workspace", (q) =>
-          q.eq("workspaceId", args.workspaceId as Id<"workspaces">)
-        )
-        .first();
-      if (member) {
-        createdBy = member._id;
-      } else {
-        throw new Error("No workspace member found to attribute record creation");
-      }
-    }
-
-    // Create the record
+    // Create the record with the provided actor
     const now = Date.now();
     const recordId = await ctx.db.insert("records", {
       workspaceId: args.workspaceId as Id<"workspaces">,
       objectTypeId: args.objectTypeId,
       data,
-      createdBy,
+      createdBy: args.actorId,
       createdAt: now,
       updatedAt: now,
     });

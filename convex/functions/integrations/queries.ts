@@ -206,23 +206,35 @@ export const getHttpRequestLogs = query({
 
     const limit = args.limit ?? 50;
 
-    // Query by workspace
-    let logs = await ctx.db
-      .query("httpRequestLogs")
-      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
-      .order("desc")
-      .take(limit * 2); // Fetch extra for filtering
-
-    // Filter by template if specified
+    // Use appropriate index based on filters
+    let logs;
     if (args.templateId) {
-      logs = logs.filter((l) => l.templateId === args.templateId);
+      // Use composite index when filtering by template
+      logs = await ctx.db
+        .query("httpRequestLogs")
+        .withIndex("by_workspace_template", (q) =>
+          q.eq("workspaceId", args.workspaceId).eq("templateId", args.templateId)
+        )
+        .order("desc")
+        .take(limit);
+    } else if (args.actionExecutionId) {
+      // Use action execution index
+      logs = await ctx.db
+        .query("httpRequestLogs")
+        .withIndex("by_action_execution", (q) =>
+          q.eq("actionExecutionId", args.actionExecutionId)
+        )
+        .order("desc")
+        .take(limit);
+    } else {
+      // Default: query by workspace only
+      logs = await ctx.db
+        .query("httpRequestLogs")
+        .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
+        .order("desc")
+        .take(limit);
     }
 
-    // Filter by action execution if specified
-    if (args.actionExecutionId) {
-      logs = logs.filter((l) => l.actionExecutionId === args.actionExecutionId);
-    }
-
-    return logs.slice(0, limit);
+    return logs;
   },
 });

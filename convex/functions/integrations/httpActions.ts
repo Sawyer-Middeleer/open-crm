@@ -2,6 +2,7 @@ import { action, internalAction } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { v } from "convex/values";
 import { validateUrlForFetch } from "../../lib/urlValidation";
+import { getNestedValue } from "../../lib/interpolation";
 
 /**
  * Parse JSON safely, returning the original string if parsing fails
@@ -85,6 +86,102 @@ function sanitizeHeaders(headers: Record<string, string>): Record<string, string
   return sanitized;
 }
 
+// Types for the shared HTTP execution helper
+interface HttpRequestParams {
+  method: string;
+  url: string;
+  headers?: Record<string, string>;
+  body?: unknown;
+  authConfig?: {
+    type: string;
+    tokenEnvVar?: string;
+    usernameEnvVar?: string;
+    passwordEnvVar?: string;
+    headerName?: string;
+    keyEnvVar?: string;
+  };
+}
+
+interface HttpRequestResult {
+  success: boolean;
+  statusCode?: number;
+  body?: unknown;
+  error?: string;
+  durationMs: number;
+  // Data needed for logging
+  requestHeaders: Record<string, string>;
+  sentAt: number;
+  completedAt: number;
+}
+
+/**
+ * Core HTTP execution logic - validates URL, builds headers, makes request
+ * Returns all data needed for logging and response
+ */
+async function executeHttpRequest(params: HttpRequestParams): Promise<HttpRequestResult> {
+  const sentAt = Date.now();
+
+  // Validate URL to prevent SSRF attacks
+  const urlValidation = validateUrlForFetch(params.url);
+  if (!urlValidation.valid) {
+    const completedAt = Date.now();
+    return {
+      success: false,
+      error: `SSRF blocked: ${urlValidation.error}`,
+      durationMs: completedAt - sentAt,
+      requestHeaders: {},
+      sentAt,
+      completedAt,
+    };
+  }
+
+  // Build headers
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(params.headers ?? {}),
+  };
+
+  // Add auth header if configured
+  const authHeader = buildAuthHeader(params.authConfig);
+  if (authHeader) {
+    headers[authHeader.headerName] = authHeader.headerValue;
+  }
+
+  try {
+    const response = await fetch(params.url, {
+      method: params.method,
+      headers,
+      body: params.body ? JSON.stringify(params.body) : undefined,
+    });
+
+    const completedAt = Date.now();
+    const responseText = await response.text();
+    const responseBody = tryParseJson(responseText);
+
+    return {
+      success: response.ok,
+      statusCode: response.status,
+      body: responseBody,
+      durationMs: completedAt - sentAt,
+      requestHeaders: sanitizeHeaders(headers),
+      sentAt,
+      completedAt,
+    };
+  } catch (error) {
+    const completedAt = Date.now();
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    return {
+      success: false,
+      error: errorMessage,
+      durationMs: completedAt - sentAt,
+      requestHeaders: sanitizeHeaders(headers),
+      sentAt,
+      completedAt,
+    };
+  }
+}
+
 /**
  * Internal action for sending HTTP requests
  * Called from mutations via scheduler
@@ -112,108 +209,40 @@ export const sendHttpRequest = internalAction({
     stepId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const sentAt = Date.now();
+    const result = await executeHttpRequest({
+      method: args.method,
+      url: args.url,
+      headers: args.headers,
+      body: args.body,
+      authConfig: args.authConfig,
+    });
 
-    // Validate URL to prevent SSRF attacks
-    const urlValidation = validateUrlForFetch(args.url);
-    if (!urlValidation.valid) {
-      const completedAt = Date.now();
-      await ctx.runMutation(internal.functions.integrations.mutations.logHttpRequest, {
-        workspaceId: args.workspaceId,
-        templateId: args.templateId,
-        actionExecutionId: args.actionExecutionId,
-        stepId: args.stepId,
-        method: args.method,
-        url: args.url,
-        requestHeaders: {},
-        status: "failed",
-        error: `SSRF blocked: ${urlValidation.error}`,
-        sentAt,
-        completedAt,
-        durationMs: completedAt - sentAt,
-      });
-      return {
-        success: false,
-        error: `SSRF blocked: ${urlValidation.error}`,
-        durationMs: completedAt - sentAt,
-      };
-    }
+    // Log the request
+    await ctx.runMutation(internal.functions.integrations.mutations.logHttpRequest, {
+      workspaceId: args.workspaceId,
+      templateId: args.templateId,
+      actionExecutionId: args.actionExecutionId,
+      stepId: args.stepId,
+      method: args.method,
+      url: args.url,
+      requestHeaders: result.requestHeaders,
+      requestBody: args.body,
+      status: result.success ? "success" : "failed",
+      statusCode: result.statusCode,
+      responseBody: result.body,
+      error: result.error,
+      sentAt: result.sentAt,
+      completedAt: result.completedAt,
+      durationMs: result.durationMs,
+    });
 
-    // Build headers
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...(args.headers ?? {}),
+    return {
+      success: result.success,
+      statusCode: result.statusCode,
+      body: result.body,
+      error: result.error,
+      durationMs: result.durationMs,
     };
-
-    // Add auth header if configured
-    const authHeader = buildAuthHeader(args.authConfig);
-    if (authHeader) {
-      headers[authHeader.headerName] = authHeader.headerValue;
-    }
-
-    try {
-      // Make the HTTP request
-      const response = await fetch(args.url, {
-        method: args.method,
-        headers,
-        body: args.body ? JSON.stringify(args.body) : undefined,
-      });
-
-      const completedAt = Date.now();
-      const responseText = await response.text();
-      const responseBody = tryParseJson(responseText);
-
-      // Log the request
-      await ctx.runMutation(internal.functions.integrations.mutations.logHttpRequest, {
-        workspaceId: args.workspaceId,
-        templateId: args.templateId,
-        actionExecutionId: args.actionExecutionId,
-        stepId: args.stepId,
-        method: args.method,
-        url: args.url,
-        requestHeaders: sanitizeHeaders(headers),
-        requestBody: args.body,
-        status: response.ok ? "success" : "failed",
-        statusCode: response.status,
-        responseBody,
-        sentAt,
-        completedAt,
-        durationMs: completedAt - sentAt,
-      });
-
-      return {
-        success: response.ok,
-        statusCode: response.status,
-        body: responseBody,
-        durationMs: completedAt - sentAt,
-      };
-    } catch (error) {
-      const completedAt = Date.now();
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      // Log the failure
-      await ctx.runMutation(internal.functions.integrations.mutations.logHttpRequest, {
-        workspaceId: args.workspaceId,
-        templateId: args.templateId,
-        actionExecutionId: args.actionExecutionId,
-        stepId: args.stepId,
-        method: args.method,
-        url: args.url,
-        requestHeaders: sanitizeHeaders(headers),
-        requestBody: args.body,
-        status: "failed",
-        error: errorMessage,
-        sentAt,
-        completedAt,
-        durationMs: completedAt - sentAt,
-      });
-
-      return {
-        success: false,
-        error: errorMessage,
-        durationMs: completedAt - sentAt,
-      };
-    }
   },
 });
 
@@ -240,97 +269,37 @@ export const sendRequest = action({
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
-    const sentAt = Date.now();
+    const result = await executeHttpRequest({
+      method: args.method,
+      url: args.url,
+      headers: args.headers,
+      body: args.body,
+      authConfig: args.authConfig,
+    });
 
-    // Validate URL to prevent SSRF attacks
-    const urlValidation = validateUrlForFetch(args.url);
-    if (!urlValidation.valid) {
-      const completedAt = Date.now();
-      await ctx.runMutation(internal.functions.integrations.mutations.logHttpRequest, {
-        workspaceId: args.workspaceId,
-        method: args.method,
-        url: args.url,
-        requestHeaders: {},
-        status: "failed",
-        error: `SSRF blocked: ${urlValidation.error}`,
-        sentAt,
-        completedAt,
-        durationMs: completedAt - sentAt,
-      });
-      return {
-        success: false,
-        error: `SSRF blocked: ${urlValidation.error}`,
-        durationMs: completedAt - sentAt,
-      };
-    }
+    // Log the request
+    await ctx.runMutation(internal.functions.integrations.mutations.logHttpRequest, {
+      workspaceId: args.workspaceId,
+      method: args.method,
+      url: args.url,
+      requestHeaders: result.requestHeaders,
+      requestBody: args.body,
+      status: result.success ? "success" : "failed",
+      statusCode: result.statusCode,
+      responseBody: result.body,
+      error: result.error,
+      sentAt: result.sentAt,
+      completedAt: result.completedAt,
+      durationMs: result.durationMs,
+    });
 
-    // Build headers
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...(args.headers ?? {}),
+    return {
+      success: result.success,
+      statusCode: result.statusCode,
+      body: result.body,
+      error: result.error,
+      durationMs: result.durationMs,
     };
-
-    // Add auth header if configured
-    const authHeader = buildAuthHeader(args.authConfig);
-    if (authHeader) {
-      headers[authHeader.headerName] = authHeader.headerValue;
-    }
-
-    try {
-      const response = await fetch(args.url, {
-        method: args.method,
-        headers,
-        body: args.body ? JSON.stringify(args.body) : undefined,
-      });
-
-      const completedAt = Date.now();
-      const responseText = await response.text();
-      const responseBody = tryParseJson(responseText);
-
-      // Log the request
-      await ctx.runMutation(internal.functions.integrations.mutations.logHttpRequest, {
-        workspaceId: args.workspaceId,
-        method: args.method,
-        url: args.url,
-        requestHeaders: sanitizeHeaders(headers),
-        requestBody: args.body,
-        status: response.ok ? "success" : "failed",
-        statusCode: response.status,
-        responseBody,
-        sentAt,
-        completedAt,
-        durationMs: completedAt - sentAt,
-      });
-
-      return {
-        success: response.ok,
-        statusCode: response.status,
-        body: responseBody,
-        durationMs: completedAt - sentAt,
-      };
-    } catch (error) {
-      const completedAt = Date.now();
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      await ctx.runMutation(internal.functions.integrations.mutations.logHttpRequest, {
-        workspaceId: args.workspaceId,
-        method: args.method,
-        url: args.url,
-        requestHeaders: sanitizeHeaders(headers),
-        requestBody: args.body,
-        status: "failed",
-        error: errorMessage,
-        sentAt,
-        completedAt,
-        durationMs: completedAt - sentAt,
-      });
-
-      return {
-        success: false,
-        error: errorMessage,
-        durationMs: completedAt - sentAt,
-      };
-    }
   },
 });
 
@@ -397,100 +366,38 @@ export const sendFromTemplate = action({
     const interpolatedHeaders = interpolateObject(template.headers ?? {}, variables) as Record<string, string> | undefined;
     const body = interpolateObject(template.body, variables);
 
-    const sentAt = Date.now();
+    const result = await executeHttpRequest({
+      method: template.method,
+      url,
+      headers: interpolatedHeaders,
+      body,
+      authConfig: template.auth,
+    });
 
-    // Validate the fully interpolated URL to prevent SSRF attacks
-    const urlValidation = validateUrlForFetch(url);
-    if (!urlValidation.valid) {
-      const completedAt = Date.now();
-      await ctx.runMutation(internal.functions.integrations.mutations.logHttpRequest, {
-        workspaceId: args.workspaceId,
-        templateId: template._id,
-        method: template.method,
-        url,
-        requestHeaders: {},
-        status: "failed",
-        error: `SSRF blocked: ${urlValidation.error}`,
-        sentAt,
-        completedAt,
-        durationMs: completedAt - sentAt,
-      });
-      return {
-        success: false,
-        error: `SSRF blocked: ${urlValidation.error}`,
-        durationMs: completedAt - sentAt,
-      };
-    }
+    // Log the request
+    await ctx.runMutation(internal.functions.integrations.mutations.logHttpRequest, {
+      workspaceId: args.workspaceId,
+      templateId: template._id,
+      method: template.method,
+      url,
+      requestHeaders: result.requestHeaders,
+      requestBody: body,
+      status: result.success ? "success" : "failed",
+      statusCode: result.statusCode,
+      responseBody: result.body,
+      error: result.error,
+      sentAt: result.sentAt,
+      completedAt: result.completedAt,
+      durationMs: result.durationMs,
+    });
 
-    // Build headers
-    const finalHeaders: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...(interpolatedHeaders ?? {}),
+    return {
+      success: result.success,
+      statusCode: result.statusCode,
+      body: result.body,
+      error: result.error,
+      durationMs: result.durationMs,
     };
-
-    // Add auth header if configured
-    const authHeader = buildAuthHeader(template.auth);
-    if (authHeader) {
-      finalHeaders[authHeader.headerName] = authHeader.headerValue;
-    }
-
-    try {
-      const response = await fetch(url, {
-        method: template.method,
-        headers: finalHeaders,
-        body: body ? JSON.stringify(body) : undefined,
-      });
-
-      const completedAt = Date.now();
-      const responseText = await response.text();
-      const responseBody = tryParseJson(responseText);
-
-      // Log the request
-      await ctx.runMutation(internal.functions.integrations.mutations.logHttpRequest, {
-        workspaceId: args.workspaceId,
-        templateId: template._id,
-        method: template.method,
-        url,
-        requestHeaders: sanitizeHeaders(finalHeaders),
-        requestBody: body,
-        status: response.ok ? "success" : "failed",
-        statusCode: response.status,
-        responseBody,
-        sentAt,
-        completedAt,
-        durationMs: completedAt - sentAt,
-      });
-
-      return {
-        success: response.ok,
-        statusCode: response.status,
-        body: responseBody,
-        durationMs: completedAt - sentAt,
-      };
-    } catch (error) {
-      const completedAt = Date.now();
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      await ctx.runMutation(internal.functions.integrations.mutations.logHttpRequest, {
-        workspaceId: args.workspaceId,
-        templateId: template._id,
-        method: template.method,
-        url,
-        requestHeaders: sanitizeHeaders(finalHeaders),
-        requestBody: body,
-        status: "failed",
-        error: errorMessage,
-        sentAt,
-        completedAt,
-        durationMs: completedAt - sentAt,
-      });
-
-      return {
-        success: false,
-        error: errorMessage,
-        durationMs: completedAt - sentAt,
-      };
-    }
   },
 });
 
@@ -535,21 +442,3 @@ function interpolateObject(obj: unknown, variables: Record<string, unknown>): un
   return obj;
 }
 
-/**
- * Get nested value from object using path parts
- */
-function getNestedValue(obj: Record<string, unknown>, parts: string[]): unknown {
-  let current: unknown = obj;
-
-  for (const part of parts) {
-    if (current === null || current === undefined) {
-      return undefined;
-    }
-    if (typeof current !== "object") {
-      return undefined;
-    }
-    current = (current as Record<string, unknown>)[part];
-  }
-
-  return current;
-}

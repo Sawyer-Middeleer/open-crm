@@ -661,7 +661,8 @@ const httpRequestLogs = defineTable({
   .index("by_workspace", ["workspaceId"])
   .index("by_template", ["templateId"])
   .index("by_action_execution", ["actionExecutionId"])
-  .index("by_workspace_sent", ["workspaceId", "sentAt"]);
+  .index("by_workspace_sent", ["workspaceId", "sentAt"])
+  .index("by_workspace_template", ["workspaceId", "templateId"]);
 
 // ============================================================================
 // VIEWS & SAVED FILTERS

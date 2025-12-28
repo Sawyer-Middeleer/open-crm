@@ -79,321 +79,240 @@ export const create = mutation({
   },
 });
 
-async function seedSystemObjectTypes(
-  ctx: any,
-  workspaceId: string,
-  memberId: string
-) {
-  const now = Date.now();
-
-  // Create People object type
-  const peopleId = await ctx.db.insert("objectTypes", {
-    workspaceId,
+// Seed data definitions for system object types
+const SEED_OBJECT_TYPES = {
+  people: {
     name: "People",
     slug: "people",
     singularName: "Person",
     description: "Individual contacts and leads",
-    isSystem: true,
-    isActive: true,
-    displayConfig: {
-      primaryAttribute: "full_name",
-    },
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  // People attributes
-  const peopleAttributes = [
-    { name: "Full Name", slug: "full_name", type: "text" as const, isRequired: true },
-    { name: "Email", slug: "email", type: "email" as const, isUnique: true },
-    { name: "Phone", slug: "phone", type: "phone" as const },
-    { name: "Title", slug: "title", type: "text" as const },
-    { name: "Notes", slug: "notes", type: "richText" as const },
-  ];
-
-  for (let i = 0; i < peopleAttributes.length; i++) {
-    const attr = peopleAttributes[i];
-    await ctx.db.insert("attributes", {
-      workspaceId,
-      objectTypeId: peopleId,
-      name: attr.name,
-      slug: attr.slug,
-      type: attr.type,
-      isSystem: true,
-      isRequired: attr.isRequired ?? false,
-      isUnique: attr.isUnique ?? false,
-      isSearchable: attr.slug === "full_name" || attr.slug === "email",
-      isFilterable: true,
-      sortOrder: i,
-      config: {},
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
-
-  // Create Companies object type
-  const companiesId = await ctx.db.insert("objectTypes", {
-    workspaceId,
+    primaryAttribute: "full_name",
+    attributes: [
+      { name: "Full Name", slug: "full_name", type: "text", isRequired: true, isSearchable: true },
+      { name: "Email", slug: "email", type: "email", isUnique: true, isSearchable: true },
+      { name: "Phone", slug: "phone", type: "phone" },
+      { name: "Title", slug: "title", type: "text" },
+      { name: "Notes", slug: "notes", type: "richText" },
+    ],
+  },
+  companies: {
     name: "Companies",
     slug: "companies",
     singularName: "Company",
     description: "Organizations and businesses",
-    isSystem: true,
-    isActive: true,
-    displayConfig: {
-      primaryAttribute: "name",
-    },
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  // Companies attributes
-  const companiesAttributes = [
-    { name: "Name", slug: "name", type: "text" as const, isRequired: true },
-    { name: "Domain", slug: "domain", type: "url" as const },
-    {
-      name: "Industry",
-      slug: "industry",
-      type: "select" as const,
-      config: {
-        options: [
-          { value: "technology", label: "Technology" },
-          { value: "finance", label: "Finance" },
-          { value: "healthcare", label: "Healthcare" },
-          { value: "retail", label: "Retail" },
-          { value: "manufacturing", label: "Manufacturing" },
-          { value: "other", label: "Other" },
-        ],
+    primaryAttribute: "name",
+    attributes: [
+      { name: "Name", slug: "name", type: "text", isRequired: true, isSearchable: true },
+      { name: "Domain", slug: "domain", type: "url" },
+      {
+        name: "Industry",
+        slug: "industry",
+        type: "select",
+        config: {
+          options: [
+            { value: "technology", label: "Technology" },
+            { value: "finance", label: "Finance" },
+            { value: "healthcare", label: "Healthcare" },
+            { value: "retail", label: "Retail" },
+            { value: "manufacturing", label: "Manufacturing" },
+            { value: "other", label: "Other" },
+          ],
+        },
       },
-    },
-    {
-      name: "Size",
-      slug: "size",
-      type: "select" as const,
-      config: {
-        options: [
-          { value: "1-10", label: "1-10" },
-          { value: "11-50", label: "11-50" },
-          { value: "51-200", label: "51-200" },
-          { value: "201-500", label: "201-500" },
-          { value: "501-1000", label: "501-1000" },
-          { value: "1000+", label: "1000+" },
-        ],
+      {
+        name: "Size",
+        slug: "size",
+        type: "select",
+        config: {
+          options: [
+            { value: "1-10", label: "1-10" },
+            { value: "11-50", label: "11-50" },
+            { value: "51-200", label: "51-200" },
+            { value: "201-500", label: "201-500" },
+            { value: "501-1000", label: "501-1000" },
+            { value: "1000+", label: "1000+" },
+          ],
+        },
       },
-    },
-    { name: "Notes", slug: "notes", type: "richText" as const },
-  ];
-
-  for (let i = 0; i < companiesAttributes.length; i++) {
-    const attr = companiesAttributes[i];
-    await ctx.db.insert("attributes", {
-      workspaceId,
-      objectTypeId: companiesId,
-      name: attr.name,
-      slug: attr.slug,
-      type: attr.type,
-      isSystem: true,
-      isRequired: attr.isRequired ?? false,
-      isUnique: false,
-      isSearchable: attr.slug === "name",
-      isFilterable: true,
-      sortOrder: i,
-      config: attr.config ?? {},
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
-
-  // Add company reference to People
-  await ctx.db.insert("attributes", {
-    workspaceId,
-    objectTypeId: peopleId,
-    name: "Company",
-    slug: "company",
-    type: "reference",
-    isSystem: true,
-    isRequired: false,
-    isUnique: false,
-    isSearchable: false,
-    isFilterable: true,
-    sortOrder: peopleAttributes.length,
-    config: {
-      referencedObjectTypeId: companiesId,
-    },
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  // Create Deals object type
-  const dealsId = await ctx.db.insert("objectTypes", {
-    workspaceId,
+      { name: "Notes", slug: "notes", type: "richText" },
+    ],
+  },
+  deals: {
     name: "Deals",
     slug: "deals",
     singularName: "Deal",
     description: "Sales opportunities and transactions",
-    isSystem: true,
-    isActive: true,
-    displayConfig: {
-      primaryAttribute: "name",
-    },
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  // Deals attributes
-  const dealsAttributes = [
-    { name: "Name", slug: "name", type: "text" as const, isRequired: true },
-    { name: "Value", slug: "value", type: "currency" as const },
-    {
-      name: "Stage",
-      slug: "stage",
-      type: "select" as const,
-      config: {
-        options: [
-          { value: "lead", label: "Lead", color: "gray" },
-          { value: "qualified", label: "Qualified", color: "blue" },
-          { value: "proposal", label: "Proposal", color: "yellow" },
-          { value: "negotiation", label: "Negotiation", color: "orange" },
-          { value: "won", label: "Won", color: "green" },
-          { value: "lost", label: "Lost", color: "red" },
-        ],
+    primaryAttribute: "name",
+    attributes: [
+      { name: "Name", slug: "name", type: "text", isRequired: true, isSearchable: true },
+      { name: "Value", slug: "value", type: "currency" },
+      {
+        name: "Stage",
+        slug: "stage",
+        type: "select",
+        config: {
+          options: [
+            { value: "lead", label: "Lead", color: "gray" },
+            { value: "qualified", label: "Qualified", color: "blue" },
+            { value: "proposal", label: "Proposal", color: "yellow" },
+            { value: "negotiation", label: "Negotiation", color: "orange" },
+            { value: "won", label: "Won", color: "green" },
+            { value: "lost", label: "Lost", color: "red" },
+          ],
+        },
       },
-    },
-    { name: "Close Date", slug: "close_date", type: "date" as const },
-    { name: "Notes", slug: "notes", type: "richText" as const },
-  ];
+      { name: "Close Date", slug: "close_date", type: "date" },
+      { name: "Notes", slug: "notes", type: "richText" },
+    ],
+  },
+} as const;
 
-  for (let i = 0; i < dealsAttributes.length; i++) {
-    const attr = dealsAttributes[i];
+// Reference attributes linking object types
+const SEED_REFERENCES = [
+  { fromType: "people", name: "Company", slug: "company", toType: "companies" },
+  { fromType: "deals", name: "Company", slug: "company", toType: "companies" },
+  { fromType: "deals", name: "Primary Contact", slug: "primary_contact", toType: "people" },
+];
+
+// List definitions with their attributes
+const SEED_LISTS = [
+  {
+    name: "Contacts",
+    slug: "contacts",
+    description: "People associated with a company",
+    allowedType: "people",
+    parentType: "companies",
+    attributes: [
+      { name: "Role", slug: "role", type: "text" },
+      { name: "Is Primary", slug: "is_primary", type: "boolean" },
+    ],
+  },
+  {
+    name: "Deal Contacts",
+    slug: "deal_contacts",
+    description: "People involved in a deal",
+    allowedType: "people",
+    parentType: "deals",
+    attributes: [
+      {
+        name: "Involvement",
+        slug: "involvement",
+        type: "select",
+        config: {
+          options: [
+            { value: "decision_maker", label: "Decision Maker" },
+            { value: "influencer", label: "Influencer" },
+            { value: "champion", label: "Champion" },
+            { value: "end_user", label: "End User" },
+          ],
+        },
+      },
+    ],
+  },
+];
+
+type SeedAttr = (typeof SEED_OBJECT_TYPES)[keyof typeof SEED_OBJECT_TYPES]["attributes"][number];
+
+async function seedSystemObjectTypes(
+  ctx: any,
+  workspaceId: string,
+  _memberId: string
+) {
+  const now = Date.now();
+  const objectTypeIds: Record<string, string> = {};
+
+  // Create object types and their attributes
+  for (const [key, def] of Object.entries(SEED_OBJECT_TYPES)) {
+    const objectTypeId = await ctx.db.insert("objectTypes", {
+      workspaceId,
+      name: def.name,
+      slug: def.slug,
+      singularName: def.singularName,
+      description: def.description,
+      isSystem: true,
+      isActive: true,
+      displayConfig: { primaryAttribute: def.primaryAttribute },
+      createdAt: now,
+      updatedAt: now,
+    });
+    objectTypeIds[key] = objectTypeId;
+
+    // Insert attributes
+    for (let i = 0; i < def.attributes.length; i++) {
+      const attr = def.attributes[i] as SeedAttr;
+      await ctx.db.insert("attributes", {
+        workspaceId,
+        objectTypeId,
+        name: attr.name,
+        slug: attr.slug,
+        type: attr.type,
+        isSystem: true,
+        isRequired: "isRequired" in attr ? attr.isRequired : false,
+        isUnique: "isUnique" in attr ? attr.isUnique : false,
+        isSearchable: "isSearchable" in attr ? attr.isSearchable : false,
+        isFilterable: true,
+        sortOrder: i,
+        config: "config" in attr ? attr.config : {},
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  }
+
+  // Create reference attributes
+  for (const ref of SEED_REFERENCES) {
+    const fromTypeId = objectTypeIds[ref.fromType];
+    const toTypeId = objectTypeIds[ref.toType];
+    const fromDef = SEED_OBJECT_TYPES[ref.fromType as keyof typeof SEED_OBJECT_TYPES];
+
     await ctx.db.insert("attributes", {
       workspaceId,
-      objectTypeId: dealsId,
-      name: attr.name,
-      slug: attr.slug,
-      type: attr.type,
+      objectTypeId: fromTypeId,
+      name: ref.name,
+      slug: ref.slug,
+      type: "reference",
       isSystem: true,
-      isRequired: attr.isRequired ?? false,
+      isRequired: false,
       isUnique: false,
-      isSearchable: attr.slug === "name",
+      isSearchable: false,
       isFilterable: true,
-      sortOrder: i,
-      config: attr.config ?? {},
+      sortOrder: fromDef.attributes.length,
+      config: { referencedObjectTypeId: toTypeId },
       createdAt: now,
       updatedAt: now,
     });
   }
 
-  // Add company and contact references to Deals
-  await ctx.db.insert("attributes", {
-    workspaceId,
-    objectTypeId: dealsId,
-    name: "Company",
-    slug: "company",
-    type: "reference",
-    isSystem: true,
-    isRequired: false,
-    isUnique: false,
-    isSearchable: false,
-    isFilterable: true,
-    sortOrder: dealsAttributes.length,
-    config: {
-      referencedObjectTypeId: companiesId,
-    },
-    createdAt: now,
-    updatedAt: now,
-  });
+  // Create lists and their attributes
+  for (const listDef of SEED_LISTS) {
+    const listId = await ctx.db.insert("lists", {
+      workspaceId,
+      name: listDef.name,
+      slug: listDef.slug,
+      description: listDef.description,
+      allowedObjectTypeIds: [objectTypeIds[listDef.allowedType]],
+      parentObjectTypeId: objectTypeIds[listDef.parentType],
+      isSystem: true,
+      createdAt: now,
+      updatedAt: now,
+    });
 
-  await ctx.db.insert("attributes", {
-    workspaceId,
-    objectTypeId: dealsId,
-    name: "Primary Contact",
-    slug: "primary_contact",
-    type: "reference",
-    isSystem: true,
-    isRequired: false,
-    isUnique: false,
-    isSearchable: false,
-    isFilterable: true,
-    sortOrder: dealsAttributes.length + 1,
-    config: {
-      referencedObjectTypeId: peopleId,
-    },
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  // Create Contacts list (People linked to Companies)
-  const contactsListId = await ctx.db.insert("lists", {
-    workspaceId,
-    name: "Contacts",
-    slug: "contacts",
-    description: "People associated with a company",
-    allowedObjectTypeIds: [peopleId],
-    parentObjectTypeId: companiesId,
-    isSystem: true,
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  // Contacts list attributes
-  await ctx.db.insert("listAttributes", {
-    workspaceId,
-    listId: contactsListId,
-    name: "Role",
-    slug: "role",
-    type: "text",
-    isRequired: false,
-    sortOrder: 0,
-    config: {},
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  await ctx.db.insert("listAttributes", {
-    workspaceId,
-    listId: contactsListId,
-    name: "Is Primary",
-    slug: "is_primary",
-    type: "boolean",
-    isRequired: false,
-    sortOrder: 1,
-    config: {},
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  // Create Deal Contacts list (People linked to Deals)
-  const dealContactsListId = await ctx.db.insert("lists", {
-    workspaceId,
-    name: "Deal Contacts",
-    slug: "deal_contacts",
-    description: "People involved in a deal",
-    allowedObjectTypeIds: [peopleId],
-    parentObjectTypeId: dealsId,
-    isSystem: true,
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  await ctx.db.insert("listAttributes", {
-    workspaceId,
-    listId: dealContactsListId,
-    name: "Involvement",
-    slug: "involvement",
-    type: "select",
-    isRequired: false,
-    sortOrder: 0,
-    config: {
-      options: [
-        { value: "decision_maker", label: "Decision Maker" },
-        { value: "influencer", label: "Influencer" },
-        { value: "champion", label: "Champion" },
-        { value: "end_user", label: "End User" },
-      ],
-    },
-    createdAt: now,
-    updatedAt: now,
-  });
+    for (let i = 0; i < listDef.attributes.length; i++) {
+      const attr = listDef.attributes[i];
+      await ctx.db.insert("listAttributes", {
+        workspaceId,
+        listId,
+        name: attr.name,
+        slug: attr.slug,
+        type: attr.type,
+        isRequired: false,
+        sortOrder: i,
+        config: "config" in attr ? attr.config : {},
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  }
 }
 
 export const addMember = mutation({

@@ -26,30 +26,50 @@ export const getRecordHistory = query({
       .order("desc")
       .take(limit);
 
-    // Enrich with actor info
-    const enrichedLogs = await Promise.all(
-      logs.map(async (log) => {
-        let actor = null;
-        if (log.actorId) {
-          const member = await ctx.db.get(log.actorId);
-          if (member) {
-            // Get user email from users table
-            const user = await ctx.db.get(member.userId);
-            actor = { id: member._id, email: user?.email };
-          }
-        }
-
-        return {
-          id: log._id,
-          action: log.action,
-          changes: log.changes,
-          actor,
-          actorType: log.actorType,
-          timestamp: log.timestamp,
-          metadata: log.metadata,
-        };
-      })
+    // Batch fetch actor info to avoid N+1 queries
+    const actorIds = logs
+      .map((l) => l.actorId)
+      .filter((id): id is NonNullable<typeof id> => id != null);
+    const uniqueActorIds = [...new Set(actorIds)];
+    const members = await Promise.all(
+      uniqueActorIds.map((id) => ctx.db.get(id))
     );
+    const memberMap = new Map(
+      members
+        .filter((m): m is NonNullable<typeof m> => m != null)
+        .map((m) => [m._id, m])
+    );
+
+    const userIds = [...memberMap.values()].map((m) => m.userId);
+    const uniqueUserIds = [...new Set(userIds)];
+    const users = await Promise.all(uniqueUserIds.map((id) => ctx.db.get(id)));
+    const userMap = new Map(
+      users
+        .filter((u): u is NonNullable<typeof u> => u != null)
+        .map((u) => [u._id, u])
+    );
+
+    // Enrich with actor info using maps
+    const enrichedLogs = logs.map((log) => {
+      let actor = null;
+      if (log.actorId) {
+        const member = memberMap.get(log.actorId);
+        if (member) {
+          const user = userMap.get(member.userId);
+          actor = { id: member._id, email: user?.email };
+        }
+      }
+
+      return {
+        id: log._id,
+        action: log.action,
+        changes: log.changes,
+        actor,
+        actorType: log.actorType,
+        timestamp: log.timestamp,
+        metadata: log.metadata,
+      };
+    });
 
     return enrichedLogs;
   },
