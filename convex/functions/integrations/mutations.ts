@@ -1,6 +1,7 @@
 import { mutation, internalMutation } from "../../_generated/server";
 import { v } from "convex/values";
 import { assertActorInWorkspace } from "../../lib/auth";
+import { createAuditLog } from "../../lib/audit";
 
 /**
  * Generate a random webhook secret using Web Crypto API
@@ -182,6 +183,20 @@ export const createIncomingWebhook = mutation({
       updatedAt: now,
     });
 
+    await createAuditLog(ctx, {
+      workspaceId: args.workspaceId,
+      entityType: "incomingWebhook",
+      entityId: webhookId,
+      action: "create",
+      changes: [
+        { field: "name", after: args.name },
+        { field: "slug", after: args.slug },
+        { field: "handlerType", after: args.handler.type },
+      ],
+      actorId: args.actorId,
+      actorType: "user",
+    });
+
     // Build webhook URL
     // Note: CONVEX_SITE_URL is set automatically by Convex in production
     const siteUrl = process.env.CONVEX_SITE_URL ?? "https://your-deployment.convex.site";
@@ -276,6 +291,24 @@ export const updateIncomingWebhook = mutation({
 
     await ctx.db.patch(args.webhookId, updates);
 
+    const changes: Array<{ field: string; before?: unknown; after?: unknown }> = [];
+    if (args.name !== undefined) changes.push({ field: "name", before: webhook.name, after: args.name });
+    if (args.description !== undefined) changes.push({ field: "description", before: webhook.description, after: args.description });
+    if (args.isActive !== undefined) changes.push({ field: "isActive", before: webhook.isActive, after: args.isActive });
+    if (args.handler) changes.push({ field: "handler", before: webhook.handler.type, after: args.handler.type });
+
+    if (changes.length > 0) {
+      await createAuditLog(ctx, {
+        workspaceId: args.workspaceId,
+        entityType: "incomingWebhook",
+        entityId: args.webhookId,
+        action: "update",
+        changes,
+        actorId: args.actorId,
+        actorType: "user",
+      });
+    }
+
     return { webhookId: args.webhookId };
   },
 });
@@ -298,6 +331,19 @@ export const deleteIncomingWebhook = mutation({
     if (!webhook || webhook.workspaceId !== args.workspaceId) {
       throw new Error("Webhook not found");
     }
+
+    await createAuditLog(ctx, {
+      workspaceId: args.workspaceId,
+      entityType: "incomingWebhook",
+      entityId: args.webhookId,
+      action: "delete",
+      changes: [
+        { field: "name", before: webhook.name },
+        { field: "slug", before: webhook.slug },
+      ],
+      actorId: args.actorId,
+      actorType: "user",
+    });
 
     await ctx.db.delete(args.webhookId);
 
@@ -447,6 +493,21 @@ export const createHttpTemplate = mutation({
       updatedAt: now,
     });
 
+    await createAuditLog(ctx, {
+      workspaceId: args.workspaceId,
+      entityType: "httpTemplate",
+      entityId: templateId,
+      action: "create",
+      changes: [
+        { field: "name", after: args.name },
+        { field: "slug", after: args.slug },
+        { field: "method", after: args.method },
+        { field: "url", after: args.url },
+      ],
+      actorId: args.actorId,
+      actorType: "user",
+    });
+
     return { templateId };
   },
 });
@@ -516,6 +577,23 @@ export const updateHttpTemplate = mutation({
 
     await ctx.db.patch(args.templateId, updates);
 
+    const changes: Array<{ field: string; before?: unknown; after?: unknown }> = [];
+    if (args.name !== undefined) changes.push({ field: "name", before: template.name, after: args.name });
+    if (args.method !== undefined) changes.push({ field: "method", before: template.method, after: args.method });
+    if (args.url !== undefined) changes.push({ field: "url", before: template.url, after: args.url });
+
+    if (changes.length > 0) {
+      await createAuditLog(ctx, {
+        workspaceId: args.workspaceId,
+        entityType: "httpTemplate",
+        entityId: args.templateId,
+        action: "update",
+        changes,
+        actorId: args.actorId,
+        actorType: "user",
+      });
+    }
+
     return { templateId: args.templateId };
   },
 });
@@ -538,6 +616,19 @@ export const deleteHttpTemplate = mutation({
     if (!template || template.workspaceId !== args.workspaceId) {
       throw new Error("Template not found");
     }
+
+    await createAuditLog(ctx, {
+      workspaceId: args.workspaceId,
+      entityType: "httpTemplate",
+      entityId: args.templateId,
+      action: "delete",
+      changes: [
+        { field: "name", before: template.name },
+        { field: "slug", before: template.slug },
+      ],
+      actorId: args.actorId,
+      actorType: "user",
+    });
 
     await ctx.db.delete(args.templateId);
 

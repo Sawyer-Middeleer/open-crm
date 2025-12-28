@@ -300,6 +300,10 @@ export function isNetworkError(error: unknown): boolean {
 
 /**
  * Get CORS headers for a request origin
+ *
+ * SECURITY: When an origin is in the allowlist, credentials are enabled.
+ * Only add trusted origins to CORS_ALLOWED_ORIGINS environment variable.
+ * Misconfiguration could enable credential theft via cross-origin requests.
  */
 export function getCorsHeaders(
   origin: string | null,

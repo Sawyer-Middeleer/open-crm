@@ -42,13 +42,20 @@ const ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || "")
  * https://datatracker.ietf.org/doc/html/rfc9728
  */
 function handleWellKnown(config: AuthConfig): Response {
-  const hostname = process.env.HOSTNAME ?? "localhost";
-  const port = process.env.PORT ?? "3000";
-  const defaultResource = `https://${hostname}:${port}/mcp`;
+  // Require MCP_RESOURCE_URI to be configured - no fallback to avoid security issues
+  if (!config.resourceUri) {
+    return new Response(
+      JSON.stringify({ error: "MCP_RESOURCE_URI not configured" }),
+      {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  }
 
   const metadata: Record<string, unknown> = {
     // REQUIRED: The protected resource identifier
-    resource: config.resourceUri ?? defaultResource,
+    resource: config.resourceUri,
 
     // Bearer token methods supported
     bearer_methods_supported: ["header"],
@@ -317,11 +324,13 @@ export async function startHttpServer(): Promise<void> {
             headers: responseHeaders,
           });
         } catch (error) {
+          // Log detailed error server-side for debugging
           console.error("[MCP] Auth error:", error);
 
           // Handle AuthError with proper RFC 6750 responses
+          // SECURITY: Return generic messages to clients, log details server-side
           if (error instanceof AuthError) {
-            // Insufficient scope → 403 with scope parameter
+            // Insufficient scope → 403 with scope parameter (safe to expose required scope)
             if (error.oauthError === "insufficient_scope") {
               return createInsufficientScopeResponse(
                 error.message.replace("Insufficient scope: requires ", ""),
@@ -331,12 +340,12 @@ export async function startHttpServer(): Promise<void> {
 
             // Workspace access denied (403 without OAuth error)
             if (error.statusCode === 403) {
-              return createForbiddenResponse(error.message);
+              return createForbiddenResponse("Access denied");
             }
 
-            // Invalid token, expired token, etc. → 401
+            // Invalid token, expired token, etc. → 401 with generic message
             return createUnauthorizedResponse(
-              error.message,
+              "Authentication failed",
               config.resourceUri,
               error.oauthError
             );
@@ -344,7 +353,7 @@ export async function startHttpServer(): Promise<void> {
 
           // Unknown errors → generic 401
           return createUnauthorizedResponse(
-            error instanceof Error ? error.message : "Authentication failed",
+            "Authentication failed",
             config.resourceUri
           );
         }

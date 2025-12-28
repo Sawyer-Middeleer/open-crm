@@ -31,6 +31,7 @@ import type * as lib_actionContext from "../lib/actionContext.js";
 import type * as lib_audit from "../lib/audit.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_urlValidation from "../lib/urlValidation.js";
+import type * as lib_validation from "../lib/validation.js";
 
 import type {
   ApiFromModules,
@@ -62,6 +63,7 @@ declare const fullApi: ApiFromModules<{
   "lib/audit": typeof lib_audit;
   "lib/auth": typeof lib_auth;
   "lib/urlValidation": typeof lib_urlValidation;
+  "lib/validation": typeof lib_validation;
 }>;
 
 /**

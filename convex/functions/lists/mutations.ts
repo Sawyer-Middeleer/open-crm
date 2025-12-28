@@ -204,6 +204,11 @@ export const addEntry = mutation({
       throw new Error("Record not found");
     }
 
+    // Validate record's object type is allowed in this list
+    if (!list.allowedObjectTypeIds.includes(record.objectTypeId)) {
+      throw new Error("Record type not allowed in this list");
+    }
+
     // Check for duplicate entry
     const existingEntries = await ctx.db
       .query("listEntries")

@@ -1,5 +1,6 @@
 import { mutation } from "../../_generated/server";
 import { v } from "convex/values";
+import { createAuditLog } from "../../lib/audit";
 
 export const create = mutation({
   args: {
@@ -58,6 +59,19 @@ export const create = mutation({
 
     // Seed system object types
     await seedSystemObjectTypes(ctx, workspaceId, memberId);
+
+    await createAuditLog(ctx, {
+      workspaceId,
+      entityType: "workspace",
+      entityId: workspaceId,
+      action: "create",
+      changes: [
+        { field: "name", after: args.name },
+        { field: "slug", after: args.slug },
+      ],
+      actorId: memberId,
+      actorType: "user",
+    });
 
     const workspace = await ctx.db.get(workspaceId);
 
@@ -419,6 +433,19 @@ export const addMember = mutation({
       role: args.role,
       createdAt: now,
       updatedAt: now,
+    });
+
+    await createAuditLog(ctx, {
+      workspaceId: args.workspaceId,
+      entityType: "workspaceMember",
+      entityId: memberId,
+      action: "create",
+      changes: [
+        { field: "userId", after: args.userId },
+        { field: "role", after: args.role },
+      ],
+      actorId: memberId,
+      actorType: "user",
     });
 
     const member = await ctx.db.get(memberId);

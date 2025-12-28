@@ -9,7 +9,9 @@ type EntityType =
   | "listAttribute"
   | "action"
   | "workspace"
-  | "workspaceMember";
+  | "workspaceMember"
+  | "incomingWebhook"
+  | "httpTemplate";
 
 type AuditAction =
   | "create"

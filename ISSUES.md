@@ -2,21 +2,7 @@
 
 This document contains all issues identified during a comprehensive code review prior to open source release.
 
----
-
-## Table of Contents
-
-- [Critical Issues](#critical-issues)
-- [High Severity Issues](#high-severity-issues)
-- [Medium Severity Issues](#medium-severity-issues)
-- [Low Severity Issues](#low-severity-issues)
-- [Testing Gaps](#testing-gaps)
-- [Documentation Issues](#documentation-issues)
-- [Architecture Concerns](#architecture-concerns)
-
----
-
-## Critical Issues
+## Issues
 
 ### 1. ~~No Authorization Checks in Queries/Mutations~~ ✅ FIXED
 
@@ -46,190 +32,36 @@ This document contains all issues identified during a comprehensive code review 
 
 ### 14. ~~Race Condition on Slug Uniqueness~~ ✅ FIXED
 
-### 15. Dockerfile References Wrong Lock File
+### 15. ~~Dockerfile References Wrong Lock File~~ ✅ FIXED
 
-**Location:** `Dockerfile:6`
-
-**Description:** References `bun.lockb` but the actual file is `bun.lock`.
-
-**Example:**
-```dockerfile
-COPY mcp-server/package.json mcp-server/bun.lockb ./
-```
-
-**Recommendation:** Change to `bun.lock`.
-
----
-
-### 16. Missing `baseUrl` in tsconfig.json
-
-**Location:** `tsconfig.json`
-
-**Description:** Has `paths` configuration but missing required `baseUrl` for path mapping to work.
-
-**Recommendation:** Add `"baseUrl": "."` to tsconfig.json.
-
----
+### 16. ~~Missing `baseUrl` in tsconfig.json~~ ✅ FIXED
 
 ### 17. ~~Type Coercion Vulnerabilities~~ ✅ FIXED
 
-Fixed by adding `mcp-server/src/lib/validators.ts` with Convex ID format validation. All ID parameters in `server.ts` are now validated before being passed to Convex queries/mutations using:
-- `validateRecordId()` for required record IDs
-- `validateSessionId()` for bulk import session IDs
-- `validateWebhookId()` for webhook IDs
-- `validateTemplateId()` for HTTP template IDs
-- `validateWorkspaceId()` for workspace IDs
-- `validateOptionalConvexId()` for optional ID parameters
-
----
-
 ## Medium Severity Issues
 
-### 18. Missing Audit Logging for Security Operations
+### 18. ~~Missing Audit Logging for Security Operations~~ ✅ FIXED
 
-**Location:** Multiple files
+### 19. ~~Information Disclosure in Error Messages~~ ✅ FIXED
 
-**Description:** Several security-sensitive operations lack audit logging.
+### 20. ~~No `.env.example` File~~ ✅ FIXED
 
-**Missing Audit Logs:**
-- `convex/functions/workspaces/mutations.ts` - Workspace creation
-- `convex/functions/workspaces/mutations.ts:373-416` - Member addition
-- `convex/functions/auth/mutations.ts:138-233` - API key create/revoke
-- `convex/functions/integrations/mutations.ts:99-323` - Webhook operations
-- `convex/functions/integrations/mutations.ts:370-524` - HTTP template operations
+### 21. ~~No LICENSE File~~ ✅ FIXED
 
-**Recommendation:** Add audit logging for all security-sensitive operations.
+### 22. ~~Duplicate Dependencies~~ ✅ FIXED
 
----
+### 23. ~~Docker Container Runs as Root~~ ✅ FIXED
 
-### 19. Information Disclosure in Error Messages
+### 24. ~~Extensive Use of `v.any()` in Schema~~ ⚠️ NO NEED TO FIX
 
-**Location:** `mcp-server/src/http.ts:216-222`
+### 25. ~~No Recursion Limit on Nested Loops~~ ✅ FIXED
 
-**Description:** Internal error messages are directly exposed to clients.
+### 26. ~~Hardcoded Fallback URL~~ ✅ FIXED
 
-**Example:**
-```typescript
-return createUnauthorizedResponse(
-  error instanceof Error ? error.message : "Authentication failed",
-  config.resourceUri
-);
-```
+### 27. ~~CORS Credentials with Broad Origins~~ ✅ FIXED
 
-**Recommendation:** Return generic error messages to clients, log details server-side.
-
----
-
-### 20. No `.env.example` File
-
-**Location:** Project root
-
-**Description:** No template for environment variables exists. Required variables are documented in CLAUDE.md but should have a proper example file.
-
-**Recommendation:** Create `.env.example` with all required and optional variables.
-
----
-
-### 21. No LICENSE File
-
-**Location:** Project root
-
-**Description:** Required for open source release. No license file currently exists.
-
-**Recommendation:** Add appropriate open source license (MIT, Apache 2.0, etc.).
-
----
-
-### 22. Duplicate Dependencies
-
-**Location:** Root and `mcp-server/package.json`
-
-**Description:** `convex` dependency exists in both package.json files, which could lead to version drift.
-
-**Recommendation:** Use Bun workspaces or ensure versions are synchronized.
-
----
-
-### 23. Docker Container Runs as Root
-
-**Location:** `Dockerfile`
-
-**Description:** No non-root user is created, container runs as root.
-
-**Recommendation:** Add a non-root user and switch to it before CMD.
-
----
-
-### 24. Extensive Use of `v.any()` in Schema
-
-**Location:** `convex/schema.ts`
-
-**Description:** Multiple fields use `v.any()` which bypasses schema validation.
-
-**Affected Fields:**
-- `records.data` (line 163)
-- `attributes.defaultValue` (line 126)
-- `listEntries.data` (line 265)
-- `actions.steps[].config` (line 415)
-- `views.config.filters[].value` (line 684)
-
-**Recommendation:** Replace with proper validators where possible.
-
----
-
-### 25. No Recursion Limit on Nested Loops
-
-**Location:** `convex/functions/actions/mutations.ts:619-723`
-
-**Description:** While there's a `maxIterations` limit (default 100), nested loops have no depth limit. Deeply nested loops could cause stack overflow.
-
-**Recommendation:** Add a maximum nesting depth limit.
-
----
-
-### 26. Hardcoded Fallback URL
-
-**Location:** `mcp-server/src/http.ts:33-36`
-
-**Description:** Uses `https://api.agent-crm.example` as fallback, which could be registered by an attacker.
-
-**Recommendation:** Remove the fallback or use a domain you control.
-
----
-
-### 27. CORS Credentials with Broad Origins
-
-**Location:** `mcp-server/src/lib/validation.ts:87-91`
-
-**Description:** When an origin is in the allowlist, credentials are allowed. Misconfiguration could enable credential theft.
-
-**Recommendation:** Document CORS configuration carefully and validate origin patterns.
-
----
-
-### 28. Missing Validation for List Entry Object Types
-
-**Location:** `convex/functions/lists/mutations.ts:194-198`
-
-**Description:** When adding a list entry, there's no check that the record's object type is in `allowedObjectTypeIds`.
-
-**Recommendation:** Validate record's object type against list's allowed types.
-
----
+### 28. ~~Missing Validation for List Entry Object Types~~ ✅ FIXED
 
 ### 29. ~~HTTP Template URL Allows Internal URLs (SSRF)~~ ✅ FIXED
 
-Fixed by adding `validateUrlForFetch()` validation before all HTTP requests in `httpActions.ts`. The validation is called in:
-- `sendHttpRequest` (internal action)
-- `sendRequest` (public action)
-- `sendFromTemplate` (after variable interpolation)
-
----
-
-### 30. No Validation of Cron Schedule Format
-
-**Location:** `convex/schema.ts:387`
-
-**Description:** The `actions.trigger.schedule` field accepts any string without cron format validation.
-
-**Recommendation:** Add cron expression validation.
+### 30. ~~No Validation of Cron Schedule Format~~ ✅ FIXED

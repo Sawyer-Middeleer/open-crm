@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { createAuditLog } from "../../lib/audit";
 import { assertActorInWorkspace } from "../../lib/auth";
 import { validateUrlForFetch } from "../../lib/urlValidation";
+import { validateCronSchedule } from "../../lib/validation";
 import type { StepContext } from "../../lib/actionContext";
 import {
   createInitialContext,
@@ -623,6 +624,17 @@ async function executeStep(
       }
 
       case "loop": {
+        // Check nesting depth to prevent stack overflow
+        const MAX_NESTING_DEPTH = 5;
+        const currentDepth = context.nestingDepth ?? 0;
+
+        if (currentDepth >= MAX_NESTING_DEPTH) {
+          return failure(
+            startedAt,
+            `Maximum loop nesting depth exceeded (${MAX_NESTING_DEPTH})`
+          );
+        }
+
         const { source, objectType, filters, items, field, maxIterations } =
           config as {
             source: "records" | "array" | "field";
@@ -1094,6 +1106,17 @@ export const createWithSlugs = mutation({
 
     if (existing) {
       throw new Error(`Action with slug '${args.slug}' already exists`);
+    }
+
+    // Validate cron schedule for scheduled triggers
+    if (args.trigger.type === "scheduled") {
+      if (!args.trigger.schedule) {
+        throw new Error("Schedule is required for scheduled trigger type");
+      }
+      const cronResult = validateCronSchedule(args.trigger.schedule);
+      if (!cronResult.valid) {
+        throw new Error(`Invalid cron schedule: ${cronResult.error}`);
+      }
     }
 
     const now = Date.now();

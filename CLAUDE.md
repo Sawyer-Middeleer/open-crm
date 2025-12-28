@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Agent CRM is a headless, MCP-first CRM built with Convex and Bun. It has no UI - all interactions happen via the Model Context Protocol (MCP).
+Agent CRM is a headless, MCP-first CRM built with Convex and Bun. The intended users are startups and agencies that use agentic systems (such as claude code or dedicated "AI SDRs") extensively in their work. Agent CRM is designed to be used by AI agents as first-class users. This project is pre-release.
 
 ## Commands
 
@@ -32,7 +32,7 @@ bun run build            # Deploys to Convex production
 
 ```
 /
-├── convex/                      # Convex backend
+├── convex/                     # Convex backend
 │   ├── schema.ts               # Database schema (all tables)
 │   ├── lib/                    # Shared utilities
 │   │   ├── audit.ts            # Audit log helper
@@ -42,7 +42,7 @@ bun run build            # Deploys to Convex production
 │       ├── objectTypes/        # Dynamic object type definitions
 │       ├── attributes/         # Dynamic attribute definitions
 │       ├── records/            # Record CRUD
-│       ├── lists/              # Attio-style many-to-many lists
+│       ├── lists/              # Many-to-many lists
 │       ├── actions/            # Composable automation actions
 │       ├── auth/               # Auth queries and mutations
 │       └── audit/              # Audit log queries
@@ -74,7 +74,7 @@ bun run build            # Deploys to Convex production
 
 **Records**: All data stored in single `records` table with `objectTypeId` discriminator. Attribute values in `data` field keyed by slug.
 
-**Lists**: Attio-style many-to-many relationships with junction attributes. `lists` defines the relationship, `listEntries` holds the connections with their own `data`.
+**Lists**: Many-to-many relationships with junction attributes. `lists` defines the relationship, `listEntries` holds the connections with their own `data`.
 
 **Audit Trail**: Every mutation logs to `auditLogs` with before/after snapshots, actor, and timestamp.
 

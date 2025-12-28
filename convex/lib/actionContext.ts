@@ -24,6 +24,9 @@ export interface StepContext {
   // Loop context (when inside a loop step)
   loopItem?: unknown;
   loopIndex?: number;
+
+  // Nesting depth for loop recursion protection
+  nestingDepth?: number;
 }
 
 /**
@@ -203,5 +206,6 @@ export function createLoopContext(
     ...parentContext,
     loopItem: item,
     loopIndex: index,
+    nestingDepth: (parentContext.nestingDepth ?? 0) + 1,
   };
 }
