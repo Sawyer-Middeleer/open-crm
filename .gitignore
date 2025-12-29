@@ -24,6 +24,9 @@ bun-debug.log*
 .env*.local
 .env
 
+# mcp config (contains user credentials)
+.mcp.json
+
 # typescript
 *.tsbuildinfo
 

@@ -330,6 +330,65 @@ async function executeStep(
         return success(startedAt, { field, transform, oldValue: value, newValue });
       }
 
+      case "updateRelatedRecord": {
+        const { referenceField, field, value } = config as {
+          referenceField: string;
+          field: string;
+          value: unknown;
+        };
+
+        // Get the referenced record ID from the triggered record
+        const recordData = context.record.data as Record<string, unknown>;
+        const relatedId = recordData[referenceField];
+
+        if (!relatedId) {
+          return failure(
+            startedAt,
+            `Reference field '${referenceField}' is empty - no related record to update`
+          );
+        }
+
+        // Validate it looks like a Convex ID
+        if (typeof relatedId !== "string") {
+          return failure(
+            startedAt,
+            `Reference field '${referenceField}' is not a valid record ID`
+          );
+        }
+
+        // Fetch the related record
+        const relatedRecord = await ctx.db.get(relatedId as Id<"records">);
+        if (!relatedRecord) {
+          return failure(
+            startedAt,
+            `Related record '${relatedId}' not found`
+          );
+        }
+
+        // Verify it belongs to the same workspace
+        if (relatedRecord.workspaceId !== context.workspaceId) {
+          return failure(
+            startedAt,
+            `Related record belongs to a different workspace`
+          );
+        }
+
+        // Update the related record
+        const newData = { ...relatedRecord.data, [field]: value };
+        await ctx.db.patch(relatedId as Id<"records">, {
+          data: newData,
+          updatedAt: Date.now(),
+        });
+
+        return success(startedAt, {
+          referenceField,
+          relatedRecordId: relatedId,
+          field,
+          value,
+          updated: true,
+        });
+      }
+
       // ========================================
       // RECORD OPERATIONS
       // ========================================

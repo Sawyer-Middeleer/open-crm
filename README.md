@@ -113,7 +113,37 @@ curl -X POST http://localhost:3000/mcp \
   -d '{"jsonrpc": "2.0", ...}'
 ```
 
-## Using with MCP Clients
+## Using with Claude Code
+
+Claude Code connects via stdio transport (spawns the server as a subprocess). Create `.mcp.json` in the project root:
+
+```json
+{
+  "mcpServers": {
+    "agent-crm": {
+      "type": "stdio",
+      "command": "bun",
+      "args": ["run", "mcp-server/src/stdio.ts"],
+      "env": {
+        "CONVEX_URL": "https://your-deployment.convex.cloud",
+        "DEV_USER_EMAIL": "you@example.com",
+        "DEV_WORKSPACE_ID": "YOUR_WORKSPACE_ID"
+      }
+    }
+  }
+}
+```
+
+Replace:
+- `CONVEX_URL` with your Convex deployment URL (from `.env.local`)
+- `DEV_USER_EMAIL` with the email from your dev user (Setup step 5)
+- `DEV_WORKSPACE_ID` with your workspace ID from the Convex dashboard
+
+Restart Claude Code or run `/mcp` to verify the connection. The agent-crm tools will appear in the tool list.
+
+Note: Stdio transport is recommended for local development. For production integrations, use the HTTP transport with OAuth 2.1.
+
+## Using with Other MCP Clients
 
 The server exposes a standard MCP HTTP endpoint at `/mcp`. Connect using any MCP client that supports HTTP transport with authentication headers.
 

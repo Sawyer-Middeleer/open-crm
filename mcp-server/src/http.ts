@@ -41,9 +41,15 @@ const ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || "")
  * Handle OAuth protected resource metadata endpoint (RFC 9728)
  * https://datatracker.ietf.org/doc/html/rfc9728
  */
-function handleWellKnown(config: AuthConfig): Response {
-  // Require MCP_RESOURCE_URI to be configured - no fallback to avoid security issues
-  if (!config.resourceUri) {
+function handleWellKnown(config: AuthConfig, request: Request): Response {
+  // In dev mode without MCP_RESOURCE_URI, use request URL as resource
+  const resourceUri =
+    config.resourceUri ||
+    (process.env.NODE_ENV !== "production"
+      ? new URL(request.url).origin + "/mcp"
+      : null);
+
+  if (!resourceUri) {
     return new Response(
       JSON.stringify({ error: "MCP_RESOURCE_URI not configured" }),
       {
@@ -55,7 +61,7 @@ function handleWellKnown(config: AuthConfig): Response {
 
   const metadata: Record<string, unknown> = {
     // REQUIRED: The protected resource identifier
-    resource: config.resourceUri,
+    resource: resourceUri,
 
     // Bearer token methods supported
     bearer_methods_supported: ["header"],
@@ -221,7 +227,7 @@ export async function startHttpServer(): Promise<void> {
 
       // Well-known OAuth metadata (RFC 9728)
       if (url.pathname === "/.well-known/oauth-protected-resource") {
-        return handleWellKnown(config);
+        return handleWellKnown(config, request);
       }
 
       // Health check

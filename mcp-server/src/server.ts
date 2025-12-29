@@ -31,8 +31,22 @@ interface AuthContextFromExtra {
 }
 
 /**
+ * Static auth context for stdio transport (set via setStaticAuthContext)
+ */
+let staticAuthContext: AuthContextFromExtra | null = null;
+
+/**
+ * Set a static auth context for stdio transport
+ * This will be used when no per-request auth is available
+ */
+export function setStaticAuthContext(context: AuthContextFromExtra): void {
+  staticAuthContext = context;
+}
+
+/**
  * Extract and validate auth context for a tool call
  * Checks that the token has the required scope for the tool
+ * Falls back to staticAuthContext for stdio transport
  */
 function getAuthContext(extra: unknown, toolName: string): AuthContextFromExtra {
   const authInfo = (extra as Record<string, unknown>)?.authInfo as
@@ -40,13 +54,26 @@ function getAuthContext(extra: unknown, toolName: string): AuthContextFromExtra 
     | undefined;
   const data = authInfo?.extra as Record<string, unknown> | undefined;
 
-  if (
-    !data?.userId ||
-    !data?.workspaceId ||
-    !data?.workspaceMemberId ||
-    !data?.role
-  ) {
-    throw new Error("Invalid auth context: missing required fields");
+  // Check if we have valid auth from the request
+  const hasRequestAuth =
+    data?.userId && data?.workspaceId && data?.workspaceMemberId && data?.role;
+
+  // Use request auth if available, otherwise fall back to static auth (stdio mode)
+  if (!hasRequestAuth) {
+    if (!staticAuthContext) {
+      throw new Error("Invalid auth context: missing required fields");
+    }
+    // For static auth, still check scopes
+    const requiredScope = getRequiredScope(toolName);
+    if (!hasScope(staticAuthContext.scopes, requiredScope)) {
+      throw new AuthError(
+        `Insufficient scope: ${toolName} requires ${requiredScope}`,
+        403,
+        "scope-check",
+        "insufficient_scope"
+      );
+    }
+    return staticAuthContext;
   }
 
   // Extract scopes from authInfo (set by http.ts from OAuth token)
@@ -716,10 +743,11 @@ export function createServer() {
     `Create an automation action with triggers, conditions, and steps.
 
 Step Types:
-- updateField: { field, value }
-- clearField: { field }
-- copyField: { sourceField, targetField }
+- updateField: { field, value } - Update a field on the triggered record
+- clearField: { field } - Clear a field on the triggered record
+- copyField: { sourceField, targetField } - Copy value between fields on triggered record
 - transformField: { field, transform: "uppercase"|"lowercase"|"trim"|"round"|"increment"|"decrement", amount? }
+- updateRelatedRecord: { referenceField, field, value } - Update a field on a related record (via reference field)
 - createRecord: { objectType, data }
 - deleteRecord: { recordId?, useTriggeredRecord? }
 - archiveRecord: { recordId?, useTriggeredRecord? }
@@ -729,7 +757,7 @@ Step Types:
 - sendWebhook: { url, method, headers?, body? }
 - condition: { conditions: [{field, operator, value}], logic: "and"|"or" } + thenSteps/elseSteps
 - loop: { source: "records"|"array"|"field", objectType?, filters?, items?, field?, maxIterations? } + steps
-- callMcpTool: { tool, arguments }
+- callMcpTool: { tool, arguments } - Not yet implemented
 
 Variable interpolation: Use {{record.field}}, {{previous.output}}, {{loopItem}}, {{loopIndex}} in config values.`,
     {
