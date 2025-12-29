@@ -191,7 +191,7 @@ The server exposes a standard MCP HTTP endpoint at `/mcp`. Connect using any MCP
 ### Actions
 | Tool | Description |
 |------|-------------|
-| `actions.create` | Create automation with triggers, conditions, and steps |
+| `actions.create` | Create automation with triggers, conditions, and 15 step types |
 | `actions.list` | List available actions |
 | `actions.execute` | Run an action on a record |
 

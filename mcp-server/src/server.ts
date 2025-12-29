@@ -12,6 +12,7 @@ import {
   validateTemplateId,
   validateWorkspaceId,
   validateOptionalConvexId,
+  validateActionId,
 } from "./lib/validators.js";
 
 export type McpServerWrapper = ReturnType<typeof createServer>;
@@ -713,6 +714,27 @@ export function createServer() {
     }
   );
 
+  server.tool(
+    "actions.delete",
+    "Delete an action. Cannot delete system actions or actions with active executions.",
+    {
+      actionId: z.string().describe("Action ID to delete"),
+    },
+    async ({ actionId }, extra) => {
+      const auth = getAuthContext(extra, "actions.delete");
+      validateActionId(actionId);
+      const result = await convex.mutation(
+        api.functions.actions.mutations.remove,
+        {
+          workspaceId: auth.workspaceId,
+          actionId: actionId as any,
+          actorId: auth.workspaceMemberId,
+        }
+      );
+      return jsonResponse(result);
+    }
+  );
+
   const stepSchema = z.object({
     id: z.string().describe("Unique step identifier"),
     type: z.enum([
@@ -720,6 +742,7 @@ export function createServer() {
       "clearField",
       "copyField",
       "transformField",
+      "updateRelatedRecord",
       "createRecord",
       "deleteRecord",
       "archiveRecord",

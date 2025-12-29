@@ -103,6 +103,7 @@ Trigger types:
 Step types:
 - **Field ops**: `updateField`, `clearField`, `copyField`, `transformField`
 - **Record ops**: `createRecord`, `deleteRecord`, `archiveRecord`
+- **Related record ops**: `updateRelatedRecord` (update field on record via reference)
 - **List ops**: `addToList`, `removeFromList`, `updateListEntry`
 - **Control flow**: `condition` (if/else branches), `loop` (iterate over records/arrays)
 - **External**: `sendWebhook`, `callMcpTool`
@@ -133,7 +134,7 @@ Workspace:
 - `workspace.create` - Self-service workspace creation via MCP (requires `crm:admin` scope)
 
 Actions:
-- `actions.create` - Create automations with triggers, conditions, and 14 step types
+- `actions.create` - Create automations with triggers, conditions, and 15 step types
 - `actions.list`, `actions.execute`
 
 Integrations:

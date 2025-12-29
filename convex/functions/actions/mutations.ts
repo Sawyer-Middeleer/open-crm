@@ -1295,3 +1295,88 @@ export const createWithSlugs = mutation({
     return { actionId, action };
   },
 });
+
+// ============================================================================
+// ACTION DELETION
+// ============================================================================
+
+export const remove = mutation({
+  args: {
+    workspaceId: v.id("workspaces"),
+    actionId: v.id("actions"),
+    actorId: v.id("workspaceMembers"),
+  },
+  handler: async (ctx, args) => {
+    // Verify the actor has access to this workspace
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
+    // Fetch action
+    const action = await ctx.db.get(args.actionId);
+    if (!action) {
+      throw new Error("Action not found");
+    }
+    if (action.workspaceId !== args.workspaceId) {
+      throw new Error("Action not found in workspace");
+    }
+
+    // Prevent system action deletion
+    if (action.isSystem) {
+      throw new Error("Cannot delete system actions");
+    }
+
+    // Check for active executions
+    const activeExecution = await ctx.db
+      .query("actionExecutions")
+      .withIndex("by_action", (q) => q.eq("actionId", args.actionId))
+      .filter((q) =>
+        q.or(
+          q.eq(q.field("status"), "pending"),
+          q.eq(q.field("status"), "running")
+        )
+      )
+      .first();
+
+    if (activeExecution) {
+      throw new Error("Cannot delete action with active executions");
+    }
+
+    // Check for webhook references
+    const webhooks = await ctx.db
+      .query("incomingWebhooks")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
+      .collect();
+
+    const referencingWebhook = webhooks.find(
+      (w) => w.handler?.actionId === args.actionId
+    );
+
+    if (referencingWebhook) {
+      throw new Error(
+        `Cannot delete action referenced by webhook '${referencingWebhook.name}'`
+      );
+    }
+
+    // Create audit log before deletion
+    await createAuditLog(ctx, {
+      workspaceId: args.workspaceId,
+      entityType: "action",
+      entityId: args.actionId,
+      action: "delete",
+      changes: [{ field: "name", before: action.name, after: null }],
+      beforeSnapshot: {
+        name: action.name,
+        slug: action.slug,
+        description: action.description,
+        trigger: action.trigger,
+        isActive: action.isActive,
+      },
+      actorId: args.actorId,
+      actorType: "user",
+    });
+
+    // Delete action
+    await ctx.db.delete(args.actionId);
+
+    return { success: true };
+  },
+});
