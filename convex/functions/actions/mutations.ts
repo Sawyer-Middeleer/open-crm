@@ -884,11 +884,16 @@ async function executeStep(
           internal.functions.integrations.httpActions.sendHttpRequest,
           {
             workspaceId: context.workspaceId,
-            method: method ?? "POST",
-            url: url ?? "",
+            // Direct mode params
+            method: method,
+            url: url,
             headers,
             body,
             authConfig,
+            // Template mode params
+            templateSlug,
+            variables,
+            // Logging context
             actionExecutionId: context.actionExecutionId,
             stepId: step.id,
           }
@@ -896,10 +901,12 @@ async function executeStep(
 
         return success(startedAt, {
           scheduled: true,
-          url,
+          url: url ?? undefined,
           method: method ?? "POST",
           templateSlug,
-          message: "HTTP request scheduled for execution",
+          message: templateSlug
+            ? `HTTP request scheduled using template '${templateSlug}'`
+            : "HTTP request scheduled for execution",
         });
       }
 

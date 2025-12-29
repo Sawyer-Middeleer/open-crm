@@ -1,6 +1,7 @@
 import { action, internalAction } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { v } from "convex/values";
+import type { Id } from "../../_generated/dataModel";
 import { validateUrlForFetch } from "../../lib/urlValidation";
 import { getNestedValue } from "../../lib/interpolation";
 
@@ -185,12 +186,14 @@ async function executeHttpRequest(params: HttpRequestParams): Promise<HttpReques
 /**
  * Internal action for sending HTTP requests
  * Called from mutations via scheduler
+ * Supports both direct mode (url/method) and template mode (templateSlug/variables)
  */
 export const sendHttpRequest = internalAction({
   args: {
     workspaceId: v.string(),
-    method: v.string(),
-    url: v.string(),
+    // Direct mode params (optional if using template)
+    method: v.optional(v.string()),
+    url: v.optional(v.string()),
     headers: v.optional(v.any()),
     body: v.optional(v.any()),
     authConfig: v.optional(
@@ -203,30 +206,88 @@ export const sendHttpRequest = internalAction({
         keyEnvVar: v.optional(v.string()),
       })
     ),
+    // Template mode params
+    templateSlug: v.optional(v.string()),
+    variables: v.optional(v.any()),
     // Context for logging
     templateId: v.optional(v.string()),
     actionExecutionId: v.optional(v.string()),
     stepId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    let method: string;
+    let url: string;
+    let headers: Record<string, string> | undefined;
+    let body: unknown;
+    let authConfig: typeof args.authConfig;
+    let templateId: string | undefined = args.templateId;
+
+    if (args.templateSlug) {
+      // Template mode: resolve template and interpolate variables
+      const template = await ctx.runQuery(
+        internal.functions.integrations.queries.getTemplateBySlug,
+        {
+          workspaceId: args.workspaceId as Id<"workspaces">,
+          slug: args.templateSlug,
+        }
+      ) as HttpTemplate | null;
+
+      if (!template) {
+        // Log the error and return
+        const sentAt = Date.now();
+        await ctx.runMutation(internal.functions.integrations.mutations.logHttpRequest, {
+          workspaceId: args.workspaceId,
+          actionExecutionId: args.actionExecutionId,
+          stepId: args.stepId,
+          method: "GET",
+          url: "",
+          requestHeaders: {},
+          status: "failed",
+          error: `Template '${args.templateSlug}' not found`,
+          sentAt,
+          completedAt: sentAt,
+          durationMs: 0,
+        });
+        return {
+          success: false,
+          error: `Template '${args.templateSlug}' not found`,
+        };
+      }
+
+      const variables = args.variables ?? {};
+      method = template.method;
+      url = interpolateString(template.url, variables);
+      headers = interpolateObject(template.headers ?? {}, variables) as Record<string, string> | undefined;
+      body = interpolateObject(template.body, variables);
+      authConfig = template.auth;
+      templateId = template._id;
+    } else {
+      // Direct mode: use provided params
+      method = args.method ?? "POST";
+      url = args.url ?? "";
+      headers = args.headers;
+      body = args.body;
+      authConfig = args.authConfig;
+    }
+
     const result = await executeHttpRequest({
-      method: args.method,
-      url: args.url,
-      headers: args.headers,
-      body: args.body,
-      authConfig: args.authConfig,
+      method,
+      url,
+      headers,
+      body,
+      authConfig,
     });
 
     // Log the request
     await ctx.runMutation(internal.functions.integrations.mutations.logHttpRequest, {
       workspaceId: args.workspaceId,
-      templateId: args.templateId,
+      templateId,
       actionExecutionId: args.actionExecutionId,
       stepId: args.stepId,
-      method: args.method,
-      url: args.url,
+      method,
+      url,
       requestHeaders: result.requestHeaders,
-      requestBody: args.body,
+      requestBody: body,
       status: result.success ? "success" : "failed",
       statusCode: result.statusCode,
       responseBody: result.body,
