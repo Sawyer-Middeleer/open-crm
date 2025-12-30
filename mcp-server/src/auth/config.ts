@@ -12,6 +12,8 @@ export interface OAuthConfig {
   // PropelAuth
   propelAuthUrl?: string;
   propelApiKey?: string;
+  propelAuthClientId?: string;
+  propelAuthClientSecret?: string;
   // Auth0
   auth0Domain?: string;
   auth0Audience?: string;
@@ -61,6 +63,8 @@ export function loadAuthConfig(): AuthConfig {
       case "propelauth":
         config.oauth.propelAuthUrl = process.env.PROPELAUTH_AUTH_URL;
         config.oauth.propelApiKey = process.env.PROPELAUTH_API_KEY;
+        config.oauth.propelAuthClientId = process.env.PROPELAUTH_CLIENT_ID;
+        config.oauth.propelAuthClientSecret = process.env.PROPELAUTH_CLIENT_SECRET;
         break;
 
       case "auth0":
@@ -78,3 +82,4 @@ export function loadAuthConfig(): AuthConfig {
 
   return config;
 }
+

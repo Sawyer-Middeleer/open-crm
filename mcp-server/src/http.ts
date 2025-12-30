@@ -17,6 +17,13 @@ import {
   userLimiter,
   createRateLimitResponse,
 } from "./lib/rateLimiter.js";
+import {
+  handleAuthServerMetadata,
+  handleClientRegistration,
+  handleAuthorize,
+  handleCallback,
+  handleToken,
+} from "./oauth-proxy.js";
 
 // Session TTL configuration (configurable via env vars)
 const SESSION_TTL_MS = parseInt(process.env.SESSION_TTL_MINUTES || "30", 10) * 60 * 1000;
@@ -95,6 +102,17 @@ function handleWellKnown(config: AuthConfig, request: Request): Response {
  */
 function getAuthorizationServers(config: AuthConfig): string[] {
   if (!config.oauth) return [];
+
+  // If we have PropelAuth client credentials, we act as our own auth server (OAuth proxy)
+  if (
+    config.oauth.provider === "propelauth" &&
+    config.oauth.propelAuthClientId &&
+    config.oauth.propelAuthClientSecret &&
+    config.resourceUri
+  ) {
+    // Return our own server as the authorization server
+    return [config.resourceUri.replace(/\/mcp$/, "")];
+  }
 
   switch (config.oauth.provider) {
     case "propelauth":
@@ -233,6 +251,31 @@ export async function startHttpServer(): Promise<void> {
       // Health check
       if (url.pathname === "/health") {
         return handleHealthCheck();
+      }
+
+      // OAuth Authorization Server Metadata (RFC 8414)
+      if (url.pathname === "/.well-known/oauth-authorization-server") {
+        return handleAuthServerMetadata(config);
+      }
+
+      // OAuth Dynamic Client Registration (RFC 7591)
+      if (url.pathname === "/oauth/register") {
+        return handleClientRegistration(request, config);
+      }
+
+      // OAuth Authorization Endpoint
+      if (url.pathname === "/oauth/authorize") {
+        return handleAuthorize(request, config);
+      }
+
+      // OAuth Callback (from PropelAuth)
+      if (url.pathname === "/oauth/callback") {
+        return handleCallback(request, config);
+      }
+
+      // OAuth Token Endpoint
+      if (url.pathname === "/oauth/token") {
+        return handleToken(request, config);
       }
 
       // MCP endpoint
@@ -387,3 +430,5 @@ export async function startHttpServer(): Promise<void> {
 export function getAuthContext(sessionId: string): AuthContext | undefined {
   return sessions.get(sessionId)?.auth;
 }
+
+
