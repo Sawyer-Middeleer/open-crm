@@ -43,6 +43,10 @@ const WRITE_TOOLS = [
   "records.create",
   "records.update",
   "records.delete",
+  "records.archive",
+  "records.restore",
+  "records.bulkUpdate",
+  "records.merge",
   "records.bulkValidate",
   "records.bulkCommit",
   "schema.objectTypes.create",
@@ -50,8 +54,11 @@ const WRITE_TOOLS = [
   "lists.create",
   "lists.addEntry",
   "lists.removeEntry",
+  "lists.bulkAddEntry",
+  "lists.bulkRemoveEntry",
   "actions.create",
   "actions.execute",
+  "actions.delete",
   "integrations.createWebhookEndpoint",
   "integrations.createTemplate",
   "integrations.sendRequest",
@@ -61,7 +68,11 @@ const WRITE_TOOLS = [
 /**
  * Tools requiring admin access (also grants write and read)
  */
-const ADMIN_TOOLS = ["workspace.create"];
+const ADMIN_TOOLS = [
+  "workspace.create",
+  "workspace.updateMember",
+  "workspace.removeMember",
+];
 
 /**
  * Get the required scope for a given tool name

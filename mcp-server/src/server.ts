@@ -177,12 +177,14 @@ export function createServer() {
       objectType: z.string().describe("Object type slug"),
       numItems: z.number().optional().describe("Number of records per page (default: 50)"),
       cursor: z.string().nullable().optional().describe("Pagination cursor from previous response"),
+      includeArchived: z.boolean().optional().describe("Include archived records (default: false)"),
     },
-    async ({ objectType, numItems, cursor }, extra) => {
+    async ({ objectType, numItems, cursor, includeArchived }, extra) => {
       const auth = getAuthContext(extra, "records.list");
       const result = await convex.query(api.functions.records.queries.list, {
         workspaceId: auth.workspaceId,
         objectTypeSlug: objectType,
+        includeArchived,
         paginationOpts: {
           numItems: numItems ?? 50,
           cursor: cursor ?? null,
@@ -232,6 +234,101 @@ export function createServer() {
   );
 
   server.tool(
+    "records.archive",
+    "Archive a record (soft delete). Archived records are hidden by default but can be restored.",
+    {
+      recordId: z.string().describe("Record ID to archive"),
+    },
+    async ({ recordId }, extra) => {
+      const auth = getAuthContext(extra, "records.archive");
+      validateRecordId(recordId);
+      const result = await convex.mutation(api.functions.records.mutations.archive, {
+        workspaceId: auth.workspaceId,
+        recordId: recordId as any,
+        actorId: auth.workspaceMemberId,
+      });
+      return jsonResponse(result);
+    }
+  );
+
+  server.tool(
+    "records.restore",
+    "Restore an archived record. Makes the record visible again in normal queries.",
+    {
+      recordId: z.string().describe("Record ID to restore"),
+    },
+    async ({ recordId }, extra) => {
+      const auth = getAuthContext(extra, "records.restore");
+      validateRecordId(recordId);
+      const result = await convex.mutation(api.functions.records.mutations.restore, {
+        workspaceId: auth.workspaceId,
+        recordId: recordId as any,
+        actorId: auth.workspaceMemberId,
+      });
+      return jsonResponse(result);
+    }
+  );
+
+  server.tool(
+    "records.bulkUpdate",
+    "Update multiple records with the same field values. Per-record error handling allows partial success.",
+    {
+      recordIds: z.array(z.string()).min(1).describe("Record IDs to update"),
+      data: z.record(z.any()).describe("Field values to set on all records"),
+    },
+    async ({ recordIds, data }, extra) => {
+      const auth = getAuthContext(extra, "records.bulkUpdate");
+      recordIds.forEach(validateRecordId);
+      const result = await convex.mutation(api.functions.records.mutations.bulkUpdate, {
+        workspaceId: auth.workspaceId,
+        recordIds: recordIds as any,
+        data,
+        actorId: auth.workspaceMemberId,
+      });
+      return jsonResponse(result);
+    }
+  );
+
+  server.tool(
+    "records.merge",
+    `Merge N source records into 1 target record. All records must be the same object type.
+
+Merge strategies for conflicting fields:
+- targetWins (default): Keep target record's existing values
+- sourceWins: Use first non-null value from sources (in order)
+- union: Combine arrays/multiSelect into unique values
+- concat: Concatenate arrays (allows duplicates)
+
+By default: list memberships are transferred, inbound references are updated, and source records are deleted.`,
+    {
+      targetRecordId: z.string().describe("Record ID that will receive merged data"),
+      sourceRecordIds: z.array(z.string()).min(1).describe("Record IDs to merge into target"),
+      fieldStrategy: z.enum(["targetWins", "sourceWins", "union", "concat"]).optional().describe("Default strategy for conflicting fields"),
+      fieldOverrides: z.record(z.enum(["targetWins", "sourceWins", "union", "concat", "skip"])).optional().describe("Per-field strategy overrides"),
+      transferListMemberships: z.boolean().optional().describe("Transfer source list memberships to target (default: true)"),
+      updateInboundReferences: z.boolean().optional().describe("Update records pointing to sources to point to target (default: true)"),
+      deleteSources: z.boolean().optional().describe("Delete source records after merge (default: true)"),
+    },
+    async ({ targetRecordId, sourceRecordIds, fieldStrategy, fieldOverrides, transferListMemberships, updateInboundReferences, deleteSources }, extra) => {
+      const auth = getAuthContext(extra, "records.merge");
+      validateRecordId(targetRecordId);
+      sourceRecordIds.forEach(validateRecordId);
+      const result = await convex.mutation(api.functions.records.mutations.merge, {
+        workspaceId: auth.workspaceId,
+        targetRecordId: targetRecordId as any,
+        sourceRecordIds: sourceRecordIds as any,
+        fieldStrategy,
+        fieldOverrides,
+        transferListMemberships,
+        updateInboundReferences,
+        deleteSources,
+        actorId: auth.workspaceMemberId,
+      });
+      return jsonResponse(result);
+    }
+  );
+
+  server.tool(
     "records.search",
     "Search and filter records by field values. Supports filtering by any attribute with operators like equals, contains, greaterThan, etc. Uses cursor-based pagination with safety limits.",
     {
@@ -264,10 +361,11 @@ export function createServer() {
       query: z.string().optional().describe("Text search across displayName and text fields"),
       sortBy: z.string().optional().describe("Attribute slug to sort by, or '_createdAt'"),
       sortOrder: z.enum(["asc", "desc"]).optional().describe("Sort order (default: asc)"),
+      includeArchived: z.boolean().optional().describe("Include archived records (default: false)"),
       numItems: z.number().optional().describe("Number of records per page (default: 50)"),
       cursor: z.string().nullable().optional().describe("Pagination cursor from previous response"),
     },
-    async ({ objectType, filters, query, sortBy, sortOrder, numItems, cursor }, extra) => {
+    async ({ objectType, filters, query, sortBy, sortOrder, includeArchived, numItems, cursor }, extra) => {
       const auth = getAuthContext(extra, "records.search");
       const result = await convex.query(api.functions.records.queries.search, {
         workspaceId: auth.workspaceId,
@@ -276,6 +374,7 @@ export function createServer() {
         query,
         sortBy,
         sortOrder,
+        includeArchived,
         paginationOpts: {
           numItems: numItems ?? 50,
           cursor: cursor ?? null,
@@ -627,6 +726,68 @@ export function createServer() {
     }
   );
 
+  server.tool(
+    "lists.bulkAddEntry",
+    "Add multiple records to a list in a single operation. Per-entry error handling allows partial success.",
+    {
+      listSlug: z.string().describe("List slug"),
+      entries: z
+        .array(
+          z.object({
+            recordId: z.string().describe("Record ID to add"),
+            parentRecordId: z.string().optional().describe("Parent record (for scoped lists)"),
+            data: z.record(z.any()).optional().describe("List entry attribute values"),
+          })
+        )
+        .describe("Array of entries to add"),
+    },
+    async ({ listSlug, entries }, extra) => {
+      const auth = getAuthContext(extra, "lists.bulkAddEntry");
+      entries.forEach((e) => validateRecordId(e.recordId));
+      const result = await convex.mutation(api.functions.lists.mutations.bulkAddEntry, {
+        workspaceId: auth.workspaceId,
+        listSlug,
+        entries: entries.map((e) => ({
+          recordId: e.recordId as any,
+          parentRecordId: e.parentRecordId as any,
+          data: e.data,
+        })),
+        actorId: auth.workspaceMemberId,
+      });
+      return jsonResponse(result);
+    }
+  );
+
+  server.tool(
+    "lists.bulkRemoveEntry",
+    "Remove multiple records from a list in a single operation. Per-entry error handling allows partial success.",
+    {
+      listSlug: z.string().describe("List slug"),
+      entries: z
+        .array(
+          z.object({
+            recordId: z.string().describe("Record ID to remove"),
+            parentRecordId: z.string().optional().describe("Parent record (for scoped lists)"),
+          })
+        )
+        .describe("Array of entries to remove"),
+    },
+    async ({ listSlug, entries }, extra) => {
+      const auth = getAuthContext(extra, "lists.bulkRemoveEntry");
+      entries.forEach((e) => validateRecordId(e.recordId));
+      const result = await convex.mutation(api.functions.lists.mutations.bulkRemoveEntry, {
+        workspaceId: auth.workspaceId,
+        listSlug,
+        entries: entries.map((e) => ({
+          recordId: e.recordId as any,
+          parentRecordId: e.parentRecordId as any,
+        })),
+        actorId: auth.workspaceMemberId,
+      });
+      return jsonResponse(result);
+    }
+  );
+
   // ============================================================================
   // WORKSPACE TOOLS
   // ============================================================================
@@ -644,6 +805,44 @@ export function createServer() {
         name,
         slug,
         userId: auth.userId,
+      });
+      return jsonResponse(result);
+    }
+  );
+
+  server.tool(
+    "workspace.updateMember",
+    "Update a workspace member's role. Only owners and admins can update roles. Only owners can promote to owner.",
+    {
+      memberId: z.string().describe("Member ID to update"),
+      role: z.enum(["owner", "admin", "member", "viewer"]).describe("New role for the member"),
+    },
+    async ({ memberId, role }, extra) => {
+      const auth = getAuthContext(extra, "workspace.updateMember");
+      validateOptionalConvexId(memberId, "memberId");
+      const result = await convex.mutation(api.functions.workspaces.mutations.updateMember, {
+        workspaceId: auth.workspaceId,
+        memberId: memberId as any,
+        role,
+        actorId: auth.workspaceMemberId,
+      });
+      return jsonResponse(result);
+    }
+  );
+
+  server.tool(
+    "workspace.removeMember",
+    "Remove a member from the workspace. Only owners and admins can remove members. Cannot remove the last owner.",
+    {
+      memberId: z.string().describe("Member ID to remove"),
+    },
+    async ({ memberId }, extra) => {
+      const auth = getAuthContext(extra, "workspace.removeMember");
+      validateOptionalConvexId(memberId, "memberId");
+      const result = await convex.mutation(api.functions.workspaces.mutations.removeMember, {
+        workspaceId: auth.workspaceId,
+        memberId: memberId as any,
+        actorId: auth.workspaceMemberId,
       });
       return jsonResponse(result);
     }

@@ -154,6 +154,7 @@ const records = defineTable({
   displayName: v.optional(v.string()),
   ownerId: v.optional(v.id("workspaceMembers")),
   createdBy: v.id("workspaceMembers"),
+  archivedAt: v.optional(v.number()), // Soft delete timestamp
   createdAt: v.number(),
   updatedAt: v.number(),
 })
@@ -162,7 +163,8 @@ const records = defineTable({
   .index("by_workspace_object_type", ["workspaceId", "objectTypeId"])
   .index("by_owner", ["ownerId"])
   .index("by_created_at", ["workspaceId", "createdAt"])
-  .index("by_updated_at", ["workspaceId", "updatedAt"]);
+  .index("by_updated_at", ["workspaceId", "updatedAt"])
+  .index("by_archived", ["workspaceId", "archivedAt"]);
 
 // ============================================================================
 // BULK IMPORT SESSIONS
@@ -338,10 +340,12 @@ const actionStepTypeValidator = v.union(
   v.literal("clearField"),
   v.literal("copyField"),
   v.literal("transformField"),
+  v.literal("updateRelatedRecord"),
   // Record operations
   v.literal("createRecord"),
   v.literal("deleteRecord"),
   v.literal("archiveRecord"),
+  v.literal("restoreRecord"),
   // List operations
   v.literal("addToList"),
   v.literal("removeFromList"),

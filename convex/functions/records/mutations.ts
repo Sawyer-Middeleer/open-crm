@@ -1,8 +1,88 @@
 import { mutation } from "../../_generated/server";
 import { v } from "convex/values";
+import type { Id } from "../../_generated/dataModel";
 import { createAuditLog, computeChanges } from "../../lib/audit";
 import { assertActorInWorkspace } from "../../lib/auth";
 import { evaluateTriggers } from "../../lib/triggers";
+
+// ============================================================================
+// UNIQUE CONSTRAINT CHECKING
+// ============================================================================
+
+interface UniqueCheckResult {
+  success: boolean;
+  error?: {
+    type: "duplicate_value";
+    field: string;
+    value: unknown;
+    existingRecordId: string;
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function checkUniqueConstraints(
+  ctx: any,
+  workspaceId: Id<"workspaces">,
+  objectTypeId: Id<"objectTypes">,
+  data: Record<string, unknown>,
+  excludeRecordId?: Id<"records">
+): Promise<UniqueCheckResult> {
+  // Get unique attributes for this object type
+  const attributes = await ctx.db
+    .query("attributes")
+    .withIndex("by_object_type", (q: any) => q.eq("objectTypeId", objectTypeId))
+    .collect();
+
+  const uniqueAttrs = attributes.filter((a: any) => a.isUnique);
+
+  if (uniqueAttrs.length === 0) {
+    return { success: true };
+  }
+
+  for (const attr of uniqueAttrs) {
+    const value = data[attr.slug];
+
+    // Skip if value is empty
+    if (value === undefined || value === null || value === "") {
+      continue;
+    }
+
+    // Query for existing records with same value
+    const existingRecords = await ctx.db
+      .query("records")
+      .withIndex("by_workspace_object_type", (q: any) =>
+        q.eq("workspaceId", workspaceId).eq("objectTypeId", objectTypeId)
+      )
+      .collect();
+
+    for (const record of existingRecords) {
+      // Skip self on update
+      if (excludeRecordId && record._id === excludeRecordId) {
+        continue;
+      }
+
+      // Skip archived records
+      if (record.archivedAt) {
+        continue;
+      }
+
+      const recordData = record.data as Record<string, unknown>;
+      if (recordData[attr.slug] === value) {
+        return {
+          success: false,
+          error: {
+            type: "duplicate_value",
+            field: attr.slug,
+            value,
+            existingRecordId: record._id,
+          },
+        };
+      }
+    }
+  }
+
+  return { success: true };
+}
 
 export const create = mutation({
   args: {
@@ -32,6 +112,21 @@ export const create = mutation({
       .query("attributes")
       .withIndex("by_object_type", (q) => q.eq("objectTypeId", objectType._id))
       .collect();
+
+    // Check unique constraints
+    const uniqueCheck = await checkUniqueConstraints(
+      ctx,
+      args.workspaceId,
+      objectType._id,
+      args.data as Record<string, unknown>
+    );
+
+    if (!uniqueCheck.success) {
+      return {
+        success: false,
+        error: uniqueCheck.error,
+      };
+    }
 
     // Compute display name from primary attribute
     let displayName: string | undefined;
@@ -116,6 +211,22 @@ export const update = mutation({
 
     // Merge data
     const newData = { ...existing.data, ...args.data };
+
+    // Check unique constraints (excluding self)
+    const uniqueCheck = await checkUniqueConstraints(
+      ctx,
+      args.workspaceId,
+      existing.objectTypeId,
+      newData as Record<string, unknown>,
+      args.recordId
+    );
+
+    if (!uniqueCheck.success) {
+      return {
+        success: false,
+        error: uniqueCheck.error,
+      };
+    }
 
     // Recompute display name
     let displayName = existing.displayName;
@@ -247,12 +358,112 @@ export const remove = mutation({
   },
 });
 
+export const archive = mutation({
+  args: {
+    workspaceId: v.id("workspaces"),
+    recordId: v.id("records"),
+    actorId: v.id("workspaceMembers"),
+  },
+  handler: async (ctx, args) => {
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
+    const existing = await ctx.db.get(args.recordId);
+
+    if (!existing) {
+      throw new Error("Record not found");
+    }
+
+    if (existing.workspaceId !== args.workspaceId) {
+      throw new Error("Record not found in this workspace");
+    }
+
+    if (existing.archivedAt) {
+      throw new Error("Record is already archived");
+    }
+
+    const now = Date.now();
+
+    await ctx.db.patch(args.recordId, {
+      archivedAt: now,
+      updatedAt: now,
+    });
+
+    await createAuditLog(ctx, {
+      workspaceId: args.workspaceId,
+      entityType: "record",
+      entityId: args.recordId,
+      objectTypeId: existing.objectTypeId,
+      action: "archive",
+      changes: [{ field: "archivedAt", before: undefined, after: now }],
+      beforeSnapshot: existing.data,
+      afterSnapshot: existing.data,
+      actorId: args.actorId,
+      actorType: "user",
+      metadata: { source: "api" },
+    });
+
+    const record = await ctx.db.get(args.recordId);
+
+    return { recordId: args.recordId, record };
+  },
+});
+
+export const restore = mutation({
+  args: {
+    workspaceId: v.id("workspaces"),
+    recordId: v.id("records"),
+    actorId: v.id("workspaceMembers"),
+  },
+  handler: async (ctx, args) => {
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
+    const existing = await ctx.db.get(args.recordId);
+
+    if (!existing) {
+      throw new Error("Record not found");
+    }
+
+    if (existing.workspaceId !== args.workspaceId) {
+      throw new Error("Record not found in this workspace");
+    }
+
+    if (!existing.archivedAt) {
+      throw new Error("Record is not archived");
+    }
+
+    const now = Date.now();
+
+    await ctx.db.patch(args.recordId, {
+      archivedAt: undefined,
+      updatedAt: now,
+    });
+
+    await createAuditLog(ctx, {
+      workspaceId: args.workspaceId,
+      entityType: "record",
+      entityId: args.recordId,
+      objectTypeId: existing.objectTypeId,
+      action: "restore",
+      changes: [{ field: "archivedAt", before: existing.archivedAt, after: undefined }],
+      beforeSnapshot: existing.data,
+      afterSnapshot: existing.data,
+      actorId: args.actorId,
+      actorType: "user",
+      metadata: { source: "api" },
+    });
+
+    const record = await ctx.db.get(args.recordId);
+
+    return { recordId: args.recordId, record };
+  },
+});
+
 // ============================================================================
 // BULK OPERATIONS
 // ============================================================================
 
 interface ValidationError {
-  type: "missingRequired" | "invalidType" | "invalidFormat" | "other";
+  type: "missingRequired" | "invalidType" | "invalidFormat" | "duplicateValue" | "other";
   field?: string;
   message: string;
 }
@@ -431,6 +642,37 @@ export const bulkValidate = mutation({
       config: a.config as Record<string, unknown>,
     }));
 
+    // Get unique attributes
+    const uniqueAttrs = attributes.filter((a) => a.isUnique);
+
+    // Build index of existing unique values in the database
+    const existingUniqueValues: Map<string, Set<string>> = new Map();
+    if (uniqueAttrs.length > 0) {
+      const existingRecords = await ctx.db
+        .query("records")
+        .withIndex("by_workspace_object_type", (q) =>
+          q.eq("workspaceId", args.workspaceId).eq("objectTypeId", objectType._id)
+        )
+        .filter((q) => q.eq(q.field("archivedAt"), undefined))
+        .collect();
+
+      for (const attr of uniqueAttrs) {
+        existingUniqueValues.set(attr.slug, new Set());
+        for (const record of existingRecords) {
+          const value = (record.data as Record<string, unknown>)[attr.slug];
+          if (value !== undefined && value !== null && value !== "") {
+            existingUniqueValues.get(attr.slug)!.add(String(value));
+          }
+        }
+      }
+    }
+
+    // Track unique values within the batch
+    const batchUniqueValues: Map<string, Map<string, number>> = new Map();
+    for (const attr of uniqueAttrs) {
+      batchUniqueValues.set(attr.slug, new Map()); // value -> first occurrence index
+    }
+
     // Validate each record
     const validatedRecords: Array<{
       data: unknown;
@@ -444,15 +686,49 @@ export const bulkValidate = mutation({
       missingRequired: { count: 0, fields: new Set() },
       invalidType: { count: 0, fields: new Set() },
       invalidFormat: { count: 0, fields: new Set() },
+      duplicateValue: { count: 0, fields: new Set() },
       other: { count: 0, fields: new Set() },
     };
 
     let validCount = 0;
     let invalidCount = 0;
 
-    for (const record of args.records) {
+    for (let idx = 0; idx < args.records.length; idx++) {
+      const record = args.records[idx];
       const data = record.data as Record<string, unknown>;
       const errors = validateRecord(data, attrList);
+
+      // Check unique constraints
+      for (const attr of uniqueAttrs) {
+        const value = data[attr.slug];
+        if (value === undefined || value === null || value === "") {
+          continue;
+        }
+
+        const stringValue = String(value);
+
+        // Check against existing records
+        if (existingUniqueValues.get(attr.slug)?.has(stringValue)) {
+          errors.push({
+            type: "duplicateValue",
+            field: attr.slug,
+            message: `Duplicate value for unique field '${attr.slug}': '${stringValue}' already exists`,
+          });
+          continue;
+        }
+
+        // Check against earlier records in this batch
+        const batchMap = batchUniqueValues.get(attr.slug)!;
+        if (batchMap.has(stringValue)) {
+          errors.push({
+            type: "duplicateValue",
+            field: attr.slug,
+            message: `Duplicate value for unique field '${attr.slug}': '${stringValue}' conflicts with record at index ${batchMap.get(stringValue)}`,
+          });
+        } else {
+          batchMap.set(stringValue, idx);
+        }
+      }
 
       // Compute display name
       let displayName: string | undefined;
@@ -654,6 +930,444 @@ export const bulkCommit = mutation({
       failed: failures.length,
       recordIds,
       failures: failures.slice(0, 10), // Return first 10 failures
+    };
+  },
+});
+
+export const bulkUpdate = mutation({
+  args: {
+    workspaceId: v.id("workspaces"),
+    recordIds: v.array(v.id("records")),
+    data: v.any(),
+    actorId: v.id("workspaceMembers"),
+  },
+  handler: async (ctx, args) => {
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
+    if (args.recordIds.length === 0) {
+      return { total: 0, updated: 0, failed: 0, results: [] };
+    }
+
+    const results: Array<{
+      recordId: string;
+      status: "success" | "failed";
+      error?: string;
+    }> = [];
+    let successCount = 0;
+    let failedCount = 0;
+
+    for (const recordId of args.recordIds) {
+      try {
+        const existing = await ctx.db.get(recordId);
+
+        if (!existing || existing.workspaceId !== args.workspaceId) {
+          // Skip records not in this workspace
+          continue;
+        }
+
+        const objectType = await ctx.db.get(existing.objectTypeId);
+        const newData = { ...existing.data, ...args.data };
+
+        // Recompute display name
+        let displayName = existing.displayName;
+        if (objectType?.displayConfig.primaryAttribute) {
+          displayName = String(newData[objectType.displayConfig.primaryAttribute] ?? "");
+        }
+
+        const now = Date.now();
+        const changes = computeChanges(existing.data, newData);
+
+        await ctx.db.patch(recordId, {
+          data: newData,
+          displayName,
+          updatedAt: now,
+        });
+
+        await createAuditLog(ctx, {
+          workspaceId: args.workspaceId,
+          entityType: "record",
+          entityId: recordId,
+          objectTypeId: existing.objectTypeId,
+          action: "update",
+          changes,
+          beforeSnapshot: existing.data,
+          afterSnapshot: newData,
+          actorId: args.actorId,
+          actorType: "user",
+          metadata: { source: "bulk_update" },
+        });
+
+        const changedFields = changes.map((c) => c.field);
+        await evaluateTriggers(ctx, {
+          workspaceId: args.workspaceId,
+          triggerType: "onUpdate",
+          objectTypeId: existing.objectTypeId,
+          recordId,
+          actorId: args.actorId,
+          oldData: existing.data,
+          newData,
+          changedFields,
+        });
+
+        if (changedFields.length > 0) {
+          await evaluateTriggers(ctx, {
+            workspaceId: args.workspaceId,
+            triggerType: "onFieldChange",
+            objectTypeId: existing.objectTypeId,
+            recordId,
+            actorId: args.actorId,
+            oldData: existing.data,
+            newData,
+            changedFields,
+          });
+        }
+
+        results.push({ recordId, status: "success" });
+        successCount++;
+      } catch (error) {
+        results.push({
+          recordId,
+          status: "failed",
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+        failedCount++;
+      }
+    }
+
+    return {
+      total: args.recordIds.length,
+      updated: successCount,
+      failed: failedCount,
+      results,
+    };
+  },
+});
+
+// ============================================================================
+// MERGE OPERATION
+// ============================================================================
+
+type MergeStrategy = "targetWins" | "sourceWins" | "union" | "concat" | "skip";
+
+function mergeRecordData(
+  targetData: Record<string, unknown>,
+  sourceDataList: Array<Record<string, unknown>>,
+  defaultStrategy: MergeStrategy,
+  overrides: Record<string, MergeStrategy>,
+  attributes: Array<{ slug: string; type: string }>
+): Record<string, unknown> {
+  const result = { ...targetData };
+
+  for (const attr of attributes) {
+    const strategy = overrides[attr.slug] ?? defaultStrategy;
+
+    if (strategy === "skip" || strategy === "targetWins") {
+      continue;
+    }
+
+    if (strategy === "sourceWins") {
+      for (const sourceData of sourceDataList) {
+        const val = sourceData[attr.slug];
+        if (val !== undefined && val !== null && val !== "") {
+          result[attr.slug] = val;
+          break;
+        }
+      }
+    }
+
+    if (strategy === "union" || strategy === "concat") {
+      const isArrayType = attr.type === "multiSelect" || Array.isArray(targetData[attr.slug]);
+      if (isArrayType) {
+        const targetArr = Array.isArray(targetData[attr.slug])
+          ? (targetData[attr.slug] as unknown[])
+          : [];
+        const allValues = [...targetArr];
+
+        for (const sourceData of sourceDataList) {
+          const sourceVal = sourceData[attr.slug];
+          if (Array.isArray(sourceVal)) {
+            allValues.push(...sourceVal);
+          }
+        }
+
+        result[attr.slug] = strategy === "union"
+          ? [...new Set(allValues)]
+          : allValues;
+      }
+    }
+  }
+
+  return result;
+}
+
+const mergeStrategyValidator = v.union(
+  v.literal("targetWins"),
+  v.literal("sourceWins"),
+  v.literal("union"),
+  v.literal("concat")
+);
+
+const fieldOverrideValidator = v.union(
+  v.literal("targetWins"),
+  v.literal("sourceWins"),
+  v.literal("union"),
+  v.literal("concat"),
+  v.literal("skip")
+);
+
+export const merge = mutation({
+  args: {
+    workspaceId: v.id("workspaces"),
+    targetRecordId: v.id("records"),
+    sourceRecordIds: v.array(v.id("records")),
+    fieldStrategy: v.optional(mergeStrategyValidator),
+    fieldOverrides: v.optional(v.record(v.string(), fieldOverrideValidator)),
+    transferListMemberships: v.optional(v.boolean()),
+    updateInboundReferences: v.optional(v.boolean()),
+    deleteSources: v.optional(v.boolean()),
+    actorId: v.id("workspaceMembers"),
+  },
+  handler: async (ctx, args) => {
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
+    if (args.sourceRecordIds.length === 0) {
+      throw new Error("At least one source record is required");
+    }
+
+    // 1. Fetch and validate target
+    const target = await ctx.db.get(args.targetRecordId);
+    if (!target || target.workspaceId !== args.workspaceId) {
+      throw new Error("Target record not found");
+    }
+
+    // 2. Fetch and validate sources
+    const sources = await Promise.all(
+      args.sourceRecordIds.map((id) => ctx.db.get(id))
+    );
+
+    for (let i = 0; i < sources.length; i++) {
+      const source = sources[i];
+      if (!source || source.workspaceId !== args.workspaceId) {
+        throw new Error(`Source record not found: ${args.sourceRecordIds[i]}`);
+      }
+      if (source.objectTypeId !== target.objectTypeId) {
+        throw new Error("All records must be the same object type");
+      }
+      if (source._id === target._id) {
+        throw new Error("Target cannot be in source list");
+      }
+    }
+
+    const validSources = sources as NonNullable<typeof sources[0]>[];
+
+    // 3. Get object type and attributes
+    const objectType = await ctx.db.get(target.objectTypeId);
+    if (!objectType) {
+      throw new Error("Object type not found");
+    }
+
+    const attributes = await ctx.db
+      .query("attributes")
+      .withIndex("by_object_type", (q) => q.eq("objectTypeId", target.objectTypeId))
+      .collect();
+
+    const attrList = attributes.map((a) => ({ slug: a.slug, type: a.type }));
+
+    // 4. Merge data
+    const strategy = args.fieldStrategy ?? "targetWins";
+    const overrides = (args.fieldOverrides ?? {}) as Record<string, MergeStrategy>;
+
+    const mergedData = mergeRecordData(
+      target.data as Record<string, unknown>,
+      validSources.map((s) => s.data as Record<string, unknown>),
+      strategy,
+      overrides,
+      attrList
+    );
+
+    // 5. Update target record
+    let displayName = target.displayName;
+    if (objectType.displayConfig.primaryAttribute) {
+      displayName = String(mergedData[objectType.displayConfig.primaryAttribute] ?? "");
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(args.targetRecordId, {
+      data: mergedData,
+      displayName,
+      updatedAt: now,
+    });
+
+    // 6. Transfer list memberships
+    const transferredEntries: Array<{ listId: string; from: string }> = [];
+    if (args.transferListMemberships !== false) {
+      for (const source of validSources) {
+        const entries = await ctx.db
+          .query("listEntries")
+          .withIndex("by_record", (q) => q.eq("recordId", source._id))
+          .collect();
+
+        for (const entry of entries) {
+          // Check if target already has this membership
+          const existing = await ctx.db
+            .query("listEntries")
+            .withIndex("by_list_record", (q) =>
+              q.eq("listId", entry.listId).eq("recordId", args.targetRecordId)
+            )
+            .first();
+
+          if (!existing) {
+            await ctx.db.insert("listEntries", {
+              workspaceId: args.workspaceId,
+              listId: entry.listId,
+              recordId: args.targetRecordId,
+              parentRecordId: entry.parentRecordId,
+              data: entry.data,
+              addedBy: args.actorId,
+              createdAt: now,
+              updatedAt: now,
+            });
+            transferredEntries.push({ listId: entry.listId, from: source._id });
+          }
+
+          await ctx.db.delete(entry._id);
+        }
+      }
+    }
+
+    // 7. Update inbound references
+    const updatedReferences: Array<{
+      recordId: string;
+      attribute: string;
+      from: string;
+      to: string;
+    }> = [];
+
+    if (args.updateInboundReferences !== false) {
+      // Find reference attributes pointing to this object type
+      const refAttributes = await ctx.db
+        .query("attributes")
+        .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
+        .filter((q) => q.eq(q.field("type"), "reference"))
+        .collect();
+
+      const relevantAttrs = refAttributes.filter(
+        (a) => (a.config as { referencedObjectTypeId?: string })?.referencedObjectTypeId === target.objectTypeId
+      );
+
+      const sourceIdSet = new Set(args.sourceRecordIds.map(String));
+
+      for (const attr of relevantAttrs) {
+        const recordsWithRef = await ctx.db
+          .query("records")
+          .withIndex("by_workspace_object_type", (q) =>
+            q.eq("workspaceId", args.workspaceId).eq("objectTypeId", attr.objectTypeId)
+          )
+          .collect();
+
+        for (const record of recordsWithRef) {
+          const refValue = (record.data as Record<string, unknown>)[attr.slug];
+          if (typeof refValue === "string" && sourceIdSet.has(refValue)) {
+            const newData = {
+              ...(record.data as Record<string, unknown>),
+              [attr.slug]: args.targetRecordId,
+            };
+
+            await ctx.db.patch(record._id, {
+              data: newData,
+              updatedAt: now,
+            });
+
+            updatedReferences.push({
+              recordId: record._id,
+              attribute: attr.slug,
+              from: refValue,
+              to: args.targetRecordId,
+            });
+
+            await evaluateTriggers(ctx, {
+              workspaceId: args.workspaceId,
+              triggerType: "onUpdate",
+              objectTypeId: record.objectTypeId,
+              recordId: record._id,
+              actorId: args.actorId,
+              oldData: record.data as Record<string, unknown>,
+              newData,
+              changedFields: [attr.slug],
+            });
+          }
+        }
+      }
+    }
+
+    // 8. Delete source records
+    const deletedSourceIds: string[] = [];
+    if (args.deleteSources !== false) {
+      for (const source of validSources) {
+        await evaluateTriggers(ctx, {
+          workspaceId: args.workspaceId,
+          triggerType: "onDelete",
+          objectTypeId: source.objectTypeId,
+          recordId: source._id,
+          actorId: args.actorId,
+          oldData: source.data as Record<string, unknown>,
+        });
+
+        // Delete remaining list entries for source
+        const remainingEntries = await ctx.db
+          .query("listEntries")
+          .withIndex("by_record", (q) => q.eq("recordId", source._id))
+          .collect();
+        for (const entry of remainingEntries) {
+          await ctx.db.delete(entry._id);
+        }
+
+        await ctx.db.delete(source._id);
+        deletedSourceIds.push(source._id);
+      }
+    }
+
+    // 9. Audit log
+    const changes = computeChanges(
+      target.data as Record<string, unknown>,
+      mergedData
+    );
+
+    await createAuditLog(ctx, {
+      workspaceId: args.workspaceId,
+      entityType: "record",
+      entityId: args.targetRecordId,
+      objectTypeId: target.objectTypeId,
+      action: "update",
+      changes,
+      beforeSnapshot: target.data,
+      afterSnapshot: mergedData,
+      actorId: args.actorId,
+      actorType: "user",
+      metadata: { source: "merge" },
+    });
+
+    // 10. Evaluate triggers for target
+    const changedFields = changes.map((c) => c.field);
+    await evaluateTriggers(ctx, {
+      workspaceId: args.workspaceId,
+      triggerType: "onUpdate",
+      objectTypeId: target.objectTypeId,
+      recordId: args.targetRecordId,
+      actorId: args.actorId,
+      oldData: target.data as Record<string, unknown>,
+      newData: mergedData,
+      changedFields,
+    });
+
+    const updatedRecord = await ctx.db.get(args.targetRecordId);
+
+    return {
+      record: updatedRecord,
+      mergedSourceCount: validSources.length,
+      transferredListEntries: transferredEntries,
+      updatedReferences,
+      deletedSourceIds,
     };
   },
 });

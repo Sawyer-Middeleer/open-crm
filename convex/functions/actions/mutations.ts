@@ -511,16 +511,15 @@ async function executeStep(
           return failure(startedAt, "Record not found");
         }
 
-        // Set archived flag in data
-        const newData = {
-          ...targetRecord.data,
-          _archived: true,
-          _archivedAt: Date.now(),
-        };
+        if (targetRecord.archivedAt) {
+          return failure(startedAt, "Record is already archived");
+        }
+
+        const now = Date.now();
 
         await ctx.db.patch(targetId, {
-          data: newData,
-          updatedAt: Date.now(),
+          archivedAt: now,
+          updatedAt: now,
         });
 
         await createAuditLog(ctx, {
@@ -528,16 +527,63 @@ async function executeStep(
           entityType: "record",
           entityId: targetId,
           objectTypeId: targetRecord.objectTypeId,
-          action: "update",
-          changes: [{ field: "_archived", before: false, after: true }],
+          action: "archive",
+          changes: [{ field: "archivedAt", before: undefined, after: now }],
           beforeSnapshot: targetRecord.data,
-          afterSnapshot: newData,
+          afterSnapshot: targetRecord.data,
           actorId: context.actorId,
           actorType: "action",
           metadata: { source: "action" },
         });
 
         return success(startedAt, { archivedRecordId: targetId });
+      }
+
+      case "restoreRecord": {
+        const { recordId, useTriggeredRecord } = config as {
+          recordId?: string;
+          useTriggeredRecord?: boolean;
+        };
+
+        const targetId = (useTriggeredRecord
+          ? context.record._id
+          : recordId) as string;
+
+        if (!targetId) {
+          return failure(startedAt, "No record ID specified for restoring");
+        }
+
+        const targetRecord = await ctx.db.get(targetId);
+        if (!targetRecord || targetRecord.workspaceId !== context.workspaceId) {
+          return failure(startedAt, "Record not found");
+        }
+
+        if (!targetRecord.archivedAt) {
+          return failure(startedAt, "Record is not archived");
+        }
+
+        const now = Date.now();
+
+        await ctx.db.patch(targetId, {
+          archivedAt: undefined,
+          updatedAt: now,
+        });
+
+        await createAuditLog(ctx, {
+          workspaceId: context.workspaceId,
+          entityType: "record",
+          entityId: targetId,
+          objectTypeId: targetRecord.objectTypeId,
+          action: "restore",
+          changes: [{ field: "archivedAt", before: targetRecord.archivedAt, after: undefined }],
+          beforeSnapshot: targetRecord.data,
+          afterSnapshot: targetRecord.data,
+          actorId: context.actorId,
+          actorType: "action",
+          metadata: { source: "action" },
+        });
+
+        return success(startedAt, { restoredRecordId: targetId });
       }
 
       // ========================================

@@ -387,3 +387,260 @@ export const removeEntry = mutation({
     return { success: true };
   },
 });
+
+// ============================================================================
+// BULK LIST OPERATIONS
+// ============================================================================
+
+export const bulkAddEntry = mutation({
+  args: {
+    workspaceId: v.id("workspaces"),
+    listSlug: v.string(),
+    entries: v.array(
+      v.object({
+        recordId: v.id("records"),
+        parentRecordId: v.optional(v.id("records")),
+        data: v.optional(v.any()),
+      })
+    ),
+    actorId: v.id("workspaceMembers"),
+  },
+  handler: async (ctx, args) => {
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
+    const list = await ctx.db
+      .query("lists")
+      .withIndex("by_workspace_slug", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("slug", args.listSlug)
+      )
+      .first();
+
+    if (!list) {
+      throw new Error(`List '${args.listSlug}' not found`);
+    }
+
+    const results: Array<{
+      recordId: string;
+      status: "success" | "failed";
+      entryId?: string;
+      error?: string;
+    }> = [];
+    let addedCount = 0;
+    let failedCount = 0;
+
+    for (const entry of args.entries) {
+      try {
+        // Check if record exists
+        const record = await ctx.db.get(entry.recordId);
+        if (!record || record.workspaceId !== args.workspaceId) {
+          results.push({
+            recordId: entry.recordId,
+            status: "failed",
+            error: "Record not found",
+          });
+          failedCount++;
+          continue;
+        }
+
+        // Validate record's object type is allowed in this list
+        if (!list.allowedObjectTypeIds.includes(record.objectTypeId)) {
+          results.push({
+            recordId: entry.recordId,
+            status: "failed",
+            error: "Record type not allowed in this list",
+          });
+          failedCount++;
+          continue;
+        }
+
+        // Check for duplicate entry
+        const existingEntries = await ctx.db
+          .query("listEntries")
+          .withIndex("by_list_record", (q) =>
+            q.eq("listId", list._id).eq("recordId", entry.recordId)
+          )
+          .collect();
+
+        const duplicate = existingEntries.find(
+          (e) =>
+            (!entry.parentRecordId && !e.parentRecordId) ||
+            e.parentRecordId === entry.parentRecordId
+        );
+
+        if (duplicate) {
+          results.push({
+            recordId: entry.recordId,
+            status: "failed",
+            error: "Record is already in this list",
+          });
+          failedCount++;
+          continue;
+        }
+
+        const now = Date.now();
+
+        const entryId = await ctx.db.insert("listEntries", {
+          workspaceId: args.workspaceId,
+          listId: list._id,
+          recordId: entry.recordId,
+          parentRecordId: entry.parentRecordId,
+          data: entry.data ?? {},
+          addedBy: args.actorId,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        await createAuditLog(ctx, {
+          workspaceId: args.workspaceId,
+          entityType: "listEntry",
+          entityId: entryId,
+          action: "create",
+          changes: [
+            { field: "listSlug", after: args.listSlug },
+            { field: "recordId", after: entry.recordId },
+          ],
+          afterSnapshot: entry.data,
+          actorId: args.actorId,
+          actorType: "user",
+          metadata: { source: "bulk" },
+        });
+
+        await evaluateTriggers(ctx, {
+          workspaceId: args.workspaceId,
+          triggerType: "onListAdd",
+          listId: list._id,
+          recordId: entry.recordId,
+          actorId: args.actorId,
+          newData: entry.data ?? {},
+        });
+
+        results.push({
+          recordId: entry.recordId,
+          status: "success",
+          entryId,
+        });
+        addedCount++;
+      } catch (error) {
+        results.push({
+          recordId: entry.recordId,
+          status: "failed",
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+        failedCount++;
+      }
+    }
+
+    return {
+      total: args.entries.length,
+      added: addedCount,
+      failed: failedCount,
+      results,
+    };
+  },
+});
+
+export const bulkRemoveEntry = mutation({
+  args: {
+    workspaceId: v.id("workspaces"),
+    listSlug: v.string(),
+    entries: v.array(
+      v.object({
+        recordId: v.id("records"),
+        parentRecordId: v.optional(v.id("records")),
+      })
+    ),
+    actorId: v.id("workspaceMembers"),
+  },
+  handler: async (ctx, args) => {
+    await assertActorInWorkspace(ctx, args.workspaceId, args.actorId);
+
+    const list = await ctx.db
+      .query("lists")
+      .withIndex("by_workspace_slug", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("slug", args.listSlug)
+      )
+      .first();
+
+    if (!list) {
+      throw new Error(`List '${args.listSlug}' not found`);
+    }
+
+    const results: Array<{
+      recordId: string;
+      status: "success" | "failed";
+      error?: string;
+    }> = [];
+    let removedCount = 0;
+    let failedCount = 0;
+
+    for (const entrySpec of args.entries) {
+      try {
+        const entries = await ctx.db
+          .query("listEntries")
+          .withIndex("by_list_record", (q) =>
+            q.eq("listId", list._id).eq("recordId", entrySpec.recordId)
+          )
+          .collect();
+
+        const entry = entries.find(
+          (e) =>
+            (!entrySpec.parentRecordId && !e.parentRecordId) ||
+            e.parentRecordId === entrySpec.parentRecordId
+        );
+
+        if (!entry) {
+          results.push({
+            recordId: entrySpec.recordId,
+            status: "failed",
+            error: "List entry not found",
+          });
+          failedCount++;
+          continue;
+        }
+
+        await createAuditLog(ctx, {
+          workspaceId: args.workspaceId,
+          entityType: "listEntry",
+          entityId: entry._id,
+          action: "delete",
+          changes: [],
+          beforeSnapshot: entry.data,
+          actorId: args.actorId,
+          actorType: "user",
+          metadata: { source: "bulk" },
+        });
+
+        await evaluateTriggers(ctx, {
+          workspaceId: args.workspaceId,
+          triggerType: "onListRemove",
+          listId: list._id,
+          recordId: entrySpec.recordId,
+          actorId: args.actorId,
+          oldData: entry.data,
+        });
+
+        await ctx.db.delete(entry._id);
+
+        results.push({
+          recordId: entrySpec.recordId,
+          status: "success",
+        });
+        removedCount++;
+      } catch (error) {
+        results.push({
+          recordId: entrySpec.recordId,
+          status: "failed",
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+        failedCount++;
+      }
+    }
+
+    return {
+      total: args.entries.length,
+      removed: removedCount,
+      failed: failedCount,
+      results,
+    };
+  },
+});

@@ -40,6 +40,7 @@ export const list = query({
     workspaceId: v.id("workspaces"),
     objectTypeSlug: v.string(),
     paginationOpts: paginationOptsValidator,
+    includeArchived: v.optional(v.boolean()),
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
@@ -59,13 +60,18 @@ export const list = query({
     }
 
     // Query records with proper cursor-based pagination
-    const results = await ctx.db
+    let query = ctx.db
       .query("records")
       .withIndex("by_workspace_object_type", (q) =>
         q.eq("workspaceId", args.workspaceId).eq("objectTypeId", objectType._id)
-      )
-      .order("desc")
-      .paginate(args.paginationOpts);
+      );
+
+    // Filter out archived records unless includeArchived is true
+    if (!args.includeArchived) {
+      query = query.filter((q) => q.eq(q.field("archivedAt"), undefined));
+    }
+
+    const results = await query.order("desc").paginate(args.paginationOpts);
 
     return {
       page: results.page,
@@ -196,6 +202,7 @@ type RecordDoc = {
   objectTypeId: string;
   displayName?: string | null;
   data: unknown;
+  archivedAt?: number;
   createdAt: number;
   updatedAt: number;
 };
@@ -216,6 +223,7 @@ export const search = query({
     query: v.optional(v.string()), // text search on displayName
     sortBy: v.optional(v.string()),
     sortOrder: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
+    includeArchived: v.optional(v.boolean()),
     paginationOpts: paginationOptsValidator,
     actorId: v.id("workspaceMembers"),
   },
@@ -275,6 +283,11 @@ export const search = query({
       // Filter this chunk in memory
       for (const record of chunk.page) {
         const recordDoc = record as unknown as RecordDoc;
+
+        // Filter out archived records unless includeArchived is true
+        if (!args.includeArchived && recordDoc.archivedAt !== undefined) {
+          continue;
+        }
 
         // Apply filters
         if (args.filters && args.filters.length > 0) {
