@@ -5,9 +5,6 @@ import type { Id } from "../../_generated/dataModel";
 import { validateUrlForFetch } from "../../lib/urlValidation";
 import { getNestedValue } from "../../lib/interpolation";
 
-/**
- * Parse JSON safely, returning the original string if parsing fails
- */
 function tryParseJson(text: string): unknown {
   try {
     return JSON.parse(text);
@@ -16,9 +13,6 @@ function tryParseJson(text: string): unknown {
   }
 }
 
-/**
- * Build authorization header from auth config and env vars
- */
 function buildAuthHeader(
   authConfig: {
     type: string;
@@ -71,9 +65,6 @@ function buildAuthHeader(
   return null;
 }
 
-/**
- * Sanitize headers for logging (remove auth tokens)
- */
 function sanitizeHeaders(headers: Record<string, string>): Record<string, string> {
   const sanitized = { ...headers };
   const sensitiveKeys = ["authorization", "x-api-key", "api-key", "token", "secret"];
@@ -115,10 +106,6 @@ interface HttpRequestResult {
   completedAt: number;
 }
 
-/**
- * Core HTTP execution logic - validates URL, builds headers, makes request
- * Returns all data needed for logging and response
- */
 async function executeHttpRequest(params: HttpRequestParams): Promise<HttpRequestResult> {
   const sentAt = Date.now();
 
@@ -148,13 +135,20 @@ async function executeHttpRequest(params: HttpRequestParams): Promise<HttpReques
     headers[authHeader.headerName] = authHeader.headerValue;
   }
 
+  // Set up timeout (30 seconds default)
+  const timeoutMs = 30000;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
     const response = await fetch(params.url, {
       method: params.method,
       headers,
       body: params.body ? JSON.stringify(params.body) : undefined,
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
     const completedAt = Date.now();
     const responseText = await response.text();
     const responseBody = tryParseJson(responseText);
@@ -169,7 +163,21 @@ async function executeHttpRequest(params: HttpRequestParams): Promise<HttpReques
       completedAt,
     };
   } catch (error) {
+    clearTimeout(timeoutId);
     const completedAt = Date.now();
+
+    // Check if it was a timeout
+    if (error instanceof Error && error.name === "AbortError") {
+      return {
+        success: false,
+        error: `Request timeout after ${timeoutMs}ms`,
+        durationMs: completedAt - sentAt,
+        requestHeaders: sanitizeHeaders(headers),
+        sentAt,
+        completedAt,
+      };
+    }
+
     const errorMessage = error instanceof Error ? error.message : String(error);
 
     return {
@@ -183,11 +191,7 @@ async function executeHttpRequest(params: HttpRequestParams): Promise<HttpReques
   }
 }
 
-/**
- * Internal action for sending HTTP requests
- * Called from mutations via scheduler
- * Supports both direct mode (url/method) and template mode (templateSlug/variables)
- */
+// Supports direct mode (url/method) or template mode (templateSlug/variables)
 export const sendHttpRequest = internalAction({
   args: {
     workspaceId: v.string(),
@@ -307,9 +311,6 @@ export const sendHttpRequest = internalAction({
   },
 });
 
-/**
- * Public action for sending HTTP requests directly (via MCP tool)
- */
 export const sendRequest = action({
   args: {
     workspaceId: v.id("workspaces"),
@@ -388,9 +389,6 @@ interface HttpTemplate {
   updatedAt: number;
 }
 
-/**
- * Send request using a template
- */
 export const sendFromTemplate = action({
   args: {
     workspaceId: v.id("workspaces"),
@@ -462,9 +460,6 @@ export const sendFromTemplate = action({
   },
 });
 
-/**
- * Interpolate {{variable}} placeholders in a string
- */
 function interpolateString(template: string, variables: Record<string, unknown>): string {
   return template.replace(/\{\{([^}]+)\}\}/g, (_, path: string) => {
     const value = getNestedValue(variables, path.trim().split("."));
@@ -475,9 +470,6 @@ function interpolateString(template: string, variables: Record<string, unknown>)
   });
 }
 
-/**
- * Deep interpolate all string values in an object
- */
 function interpolateObject(obj: unknown, variables: Record<string, unknown>): unknown {
   if (typeof obj === "string") {
     // Check if entire string is a single placeholder

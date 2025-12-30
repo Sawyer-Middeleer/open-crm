@@ -6,6 +6,7 @@
 import type { GenericMutationCtx, GenericDataModel } from "convex/server";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
+import { evaluateConditions as evaluateConditionsImpl } from "./conditions";
 
 export type TriggerType =
   | "onCreate"
@@ -160,116 +161,11 @@ async function findTriggeredActions<DataModel extends GenericDataModel>(
 }
 
 /**
- * Evaluate action conditions against record data
+ * Evaluate conditions against record data using consolidated condition evaluator
  */
 function evaluateConditions(
   conditions: ActionCondition[],
   data: Record<string, unknown>
 ): boolean {
-  if (conditions.length === 0) {
-    return true;
-  }
-
-  // Default logic is "and" - all conditions must pass
-  // If a condition has logic: "or", it changes the logic for subsequent conditions
-  let result = true;
-  let currentLogic: "and" | "or" = "and";
-
-  for (const condition of conditions) {
-    const fieldValue = data[condition.field];
-    const conditionResult = evaluateSingleCondition(
-      condition.operator,
-      fieldValue,
-      condition.value
-    );
-
-    if (currentLogic === "and") {
-      result = result && conditionResult;
-    } else {
-      result = result || conditionResult;
-    }
-
-    // Update logic for next condition
-    currentLogic = condition.logic ?? "and";
-  }
-
-  return result;
-}
-
-/**
- * Evaluate a single condition
- */
-function evaluateSingleCondition(
-  operator: ActionCondition["operator"],
-  fieldValue: unknown,
-  conditionValue: unknown
-): boolean {
-  switch (operator) {
-    case "equals":
-      return fieldValue === conditionValue;
-
-    case "notEquals":
-      return fieldValue !== conditionValue;
-
-    case "contains":
-      if (typeof fieldValue === "string" && typeof conditionValue === "string") {
-        return fieldValue.includes(conditionValue);
-      }
-      if (Array.isArray(fieldValue)) {
-        return fieldValue.includes(conditionValue);
-      }
-      return false;
-
-    case "notContains":
-      if (typeof fieldValue === "string" && typeof conditionValue === "string") {
-        return !fieldValue.includes(conditionValue);
-      }
-      if (Array.isArray(fieldValue)) {
-        return !fieldValue.includes(conditionValue);
-      }
-      return true;
-
-    case "greaterThan":
-      if (typeof fieldValue === "number" && typeof conditionValue === "number") {
-        return fieldValue > conditionValue;
-      }
-      return false;
-
-    case "lessThan":
-      if (typeof fieldValue === "number" && typeof conditionValue === "number") {
-        return fieldValue < conditionValue;
-      }
-      return false;
-
-    case "isEmpty":
-      return (
-        fieldValue === null ||
-        fieldValue === undefined ||
-        fieldValue === "" ||
-        (Array.isArray(fieldValue) && fieldValue.length === 0)
-      );
-
-    case "isNotEmpty":
-      return !(
-        fieldValue === null ||
-        fieldValue === undefined ||
-        fieldValue === "" ||
-        (Array.isArray(fieldValue) && fieldValue.length === 0)
-      );
-
-    case "in":
-      if (Array.isArray(conditionValue)) {
-        return conditionValue.includes(fieldValue);
-      }
-      return false;
-
-    case "notIn":
-      if (Array.isArray(conditionValue)) {
-        return !conditionValue.includes(fieldValue);
-      }
-      return true;
-
-    default:
-      return false;
-  }
+  return evaluateConditionsImpl(conditions, data);
 }

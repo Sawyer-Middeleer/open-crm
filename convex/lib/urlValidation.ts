@@ -2,17 +2,19 @@
  * URL validation utilities for Convex actions
  * Used for runtime SSRF protection when making HTTP requests
  *
+ * IMPORTANT: This file is intentionally duplicated with mcp-server/src/lib/validation.ts
+ * because Convex backend and MCP server run in separate environments that cannot share code.
+ * Any security fixes must be applied to BOTH files. The following functions are synchronized:
+ * - normalizeHostname()
+ * - isPrivateIPv6Mapped()
+ * - isBlockedHost()
+ * - validateUrlForFetch() / validateUrl()
+ *
  * Note: DNS rebinding attacks are not mitigated by this validation.
  * For complete protection, URLs should be resolved and IPs validated
  * immediately before making requests.
  */
 
-/**
- * Normalize hostname for validation
- * - Removes brackets from IPv6 addresses
- * - Decodes URL-encoded characters
- * - Lowercases
- */
 function normalizeHostname(hostname: string): string {
   let normalized = hostname.toLowerCase();
 
@@ -31,10 +33,7 @@ function normalizeHostname(hostname: string): string {
   return normalized;
 }
 
-/**
- * Check if an IPv6-mapped IPv4 address is private
- * Handles both decimal (::ffff:127.0.0.1) and hex (::ffff:7f00:1) notations
- */
+// Handles both decimal (::ffff:127.0.0.1) and hex (::ffff:7f00:1) notations
 function isPrivateIPv6Mapped(host: string): boolean {
   // Match ::ffff: prefix (case insensitive)
   const match = host.match(/^::ffff:(.+)$/i);
@@ -78,9 +77,6 @@ function isPrivateIPv6Mapped(host: string): boolean {
   return false;
 }
 
-/**
- * Check if a hostname is blocked (private IPs, localhost, metadata services)
- */
 function isBlockedHost(hostname: string): { blocked: boolean; reason?: string } {
   const host = normalizeHostname(hostname);
 
@@ -151,10 +147,7 @@ function isBlockedHost(hostname: string): { blocked: boolean; reason?: string } 
   return { blocked: false };
 }
 
-/**
- * Validate URL before making HTTP request
- * Must be called AFTER variable interpolation for template URLs
- */
+// Must be called AFTER variable interpolation for template URLs
 export function validateUrlForFetch(url: string): { valid: boolean; error?: string } {
   try {
     // Decode URL-encoded characters in the full URL before parsing

@@ -752,7 +752,6 @@ export function createServer() {
       "sendWebhook",
       "condition",
       "loop",
-      "callMcpTool",
     ]).describe("Step type"),
     name: z.string().optional().describe("Human-readable step name"),
     config: z.record(z.any()).describe("Step configuration (varies by type)"),
@@ -780,7 +779,6 @@ Step Types:
 - sendWebhook: { url, method, headers?, body? }
 - condition: { conditions: [{field, operator, value}], logic: "and"|"or" } + thenSteps/elseSteps
 - loop: { source: "records"|"array"|"field", objectType?, filters?, items?, field?, maxIterations? } + steps
-- callMcpTool: { tool, arguments } - Not yet implemented
 
 Variable interpolation: Use {{record.field}}, {{previous.output}}, {{loopItem}}, {{loopIndex}} in config values.`,
     {
@@ -946,14 +944,7 @@ Auth credentials are stored as environment variable NAMES (not values).`,
       // Validate URL pattern to prevent SSRF (handles both static URLs and templates with variables)
       const urlValidation = validateUrlPattern(args.url);
       if (!urlValidation.valid) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: urlValidation.error }, null, 2),
-            },
-          ],
-        };
+        return jsonResponse({ error: urlValidation.error });
       }
 
       const result = await convex.mutation(api.functions.integrations.mutations.createHttpTemplate, {
@@ -1007,27 +998,13 @@ Use either url/method/headers/body for ad-hoc requests, or templateSlug with var
     async (args, extra) => {
       const auth = getAuthContext(extra, "integrations.sendRequest");
       if (!args.url || !args.method) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: "Either url+method or templateSlug is required" }, null, 2),
-            },
-          ],
-        };
+        return jsonResponse({ error: "Either url+method or templateSlug is required" });
       }
 
       // Validate URL to prevent SSRF
       const urlValidation = validateUrl(args.url);
       if (!urlValidation.valid) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: urlValidation.error }, null, 2),
-            },
-          ],
-        };
+        return jsonResponse({ error: urlValidation.error });
       }
 
       const result = await convex.action(api.functions.integrations.httpActions.sendRequest, {

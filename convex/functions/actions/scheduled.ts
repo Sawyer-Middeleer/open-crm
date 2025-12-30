@@ -6,18 +6,12 @@
 import { internalMutation } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
+import { evaluateAllConditions } from "../../lib/conditions";
 import { isCronDue } from "../../lib/cron";
 
 interface FilterCondition {
   field: string;
-  operator:
-    | "equals"
-    | "notEquals"
-    | "contains"
-    | "greaterThan"
-    | "lessThan"
-    | "isEmpty"
-    | "isNotEmpty";
+  operator: string;
   value?: unknown;
 }
 
@@ -129,73 +123,13 @@ async function findMatchingRecords(
   // Apply filter conditions in memory
   if (params.filterConditions && params.filterConditions.length > 0) {
     records = records.filter((record: { data: Record<string, unknown> }) =>
-      evaluateFilterConditions(params.filterConditions!, record.data)
+      evaluateAllConditions(params.filterConditions!, record.data)
     );
   }
 
   return records;
 }
 
-/**
- * Evaluate filter conditions against record data
- */
-function evaluateFilterConditions(
-  conditions: FilterCondition[],
-  data: Record<string, unknown>
-): boolean {
-  // All conditions must pass (AND logic)
-  return conditions.every((condition) => {
-    const fieldValue = data[condition.field];
-
-    switch (condition.operator) {
-      case "equals":
-        return fieldValue === condition.value;
-
-      case "notEquals":
-        return fieldValue !== condition.value;
-
-      case "contains":
-        if (typeof fieldValue === "string" && typeof condition.value === "string") {
-          return fieldValue.includes(condition.value);
-        }
-        if (Array.isArray(fieldValue)) {
-          return fieldValue.includes(condition.value);
-        }
-        return false;
-
-      case "greaterThan":
-        if (typeof fieldValue === "number" && typeof condition.value === "number") {
-          return fieldValue > condition.value;
-        }
-        return false;
-
-      case "lessThan":
-        if (typeof fieldValue === "number" && typeof condition.value === "number") {
-          return fieldValue < condition.value;
-        }
-        return false;
-
-      case "isEmpty":
-        return (
-          fieldValue === null ||
-          fieldValue === undefined ||
-          fieldValue === "" ||
-          (Array.isArray(fieldValue) && fieldValue.length === 0)
-        );
-
-      case "isNotEmpty":
-        return !(
-          fieldValue === null ||
-          fieldValue === undefined ||
-          fieldValue === "" ||
-          (Array.isArray(fieldValue) && fieldValue.length === 0)
-        );
-
-      default:
-        return false;
-    }
-  });
-}
 
 /**
  * Get a workspace member to use as the actor for scheduled actions

@@ -22,16 +22,6 @@ const users = defineTable({
   .index("by_auth_provider", ["authProvider", "authProviderId"])
   .index("by_email", ["email"]);
 
-const sessions = defineTable({
-  userId: v.id("users"),
-  sessionToken: v.string(),
-  expiresAt: v.number(),
-  lastActiveAt: v.number(),
-  createdAt: v.number(),
-})
-  .index("by_session_token", ["sessionToken"])
-  .index("by_user", ["userId"]);
-
 // ============================================================================
 // MULTI-TENANCY
 // ============================================================================
@@ -360,9 +350,7 @@ const actionStepTypeValidator = v.union(
   v.literal("sendWebhook"),
   // Control flow
   v.literal("condition"),
-  v.literal("loop"),
-  // Meta
-  v.literal("callMcpTool")
+  v.literal("loop")
 );
 
 const actions = defineTable({
@@ -504,21 +492,8 @@ const actionExecutions = defineTable({
   .index("by_workspace_started", ["workspaceId", "startedAt"]);
 
 // ============================================================================
-// WEBHOOKS
+// INTEGRATIONS: INCOMING WEBHOOKS
 // ============================================================================
-
-const webhookEndpoints = defineTable({
-  workspaceId: v.id("workspaces"),
-  name: v.string(),
-  url: v.string(),
-  secret: v.string(),
-  events: v.array(v.string()),
-  isActive: v.boolean(),
-  createdAt: v.number(),
-  updatedAt: v.number(),
-})
-  .index("by_workspace", ["workspaceId"])
-  .index("by_workspace_active", ["workspaceId", "isActive"]);
 
 // Incoming webhook endpoints (external services POST to these)
 const incomingWebhooks = defineTable({
@@ -665,62 +640,12 @@ const httpRequestLogs = defineTable({
   .index("by_workspace_template", ["workspaceId", "templateId"]);
 
 // ============================================================================
-// VIEWS & SAVED FILTERS
-// ============================================================================
-
-const views = defineTable({
-  workspaceId: v.id("workspaces"),
-  objectTypeId: v.optional(v.id("objectTypes")),
-  listId: v.optional(v.id("lists")),
-  name: v.string(),
-  slug: v.string(),
-  isDefault: v.boolean(),
-  isPublic: v.boolean(),
-  createdBy: v.id("workspaceMembers"),
-  config: v.object({
-    columns: v.array(
-      v.object({
-        attributeSlug: v.string(),
-        width: v.optional(v.number()),
-        sortOrder: v.number(),
-      })
-    ),
-    sort: v.optional(
-      v.array(
-        v.object({
-          field: v.string(),
-          direction: v.union(v.literal("asc"), v.literal("desc")),
-        })
-      )
-    ),
-    filters: v.optional(
-      v.array(
-        v.object({
-          field: v.string(),
-          operator: v.string(),
-          value: v.any(),
-          logic: v.optional(v.union(v.literal("and"), v.literal("or"))),
-        })
-      )
-    ),
-    groupBy: v.optional(v.string()),
-  }),
-  createdAt: v.number(),
-  updatedAt: v.number(),
-})
-  .index("by_workspace", ["workspaceId"])
-  .index("by_object_type", ["objectTypeId"])
-  .index("by_list", ["listId"])
-  .index("by_creator", ["createdBy"]);
-
-// ============================================================================
 // SCHEMA EXPORT
 // ============================================================================
 
 export default defineSchema({
   // Users & Authentication
   users,
-  sessions,
 
   // Multi-tenancy
   workspaces,
@@ -748,15 +673,9 @@ export default defineSchema({
   actions,
   actionExecutions,
 
-  // Webhooks
-  webhookEndpoints,
-
   // Integrations
   incomingWebhooks,
   webhookLogs,
   httpTemplates,
   httpRequestLogs,
-
-  // Views
-  views,
 });

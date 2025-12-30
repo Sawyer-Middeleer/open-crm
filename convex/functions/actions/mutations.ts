@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
 import { createAuditLog } from "../../lib/audit";
 import { assertActorInWorkspace } from "../../lib/auth";
+import { evaluateCondition } from "../../lib/conditions";
 import { validateUrlForFetch } from "../../lib/urlValidation";
 import { validateCronSchedule, validateCommonFields } from "../../lib/validation";
 import type { StepContext } from "../../lib/actionContext";
@@ -676,6 +677,17 @@ async function executeStep(
       // CONTROL FLOW
       // ========================================
       case "condition": {
+        // Check nesting depth to prevent stack overflow
+        const MAX_NESTING_DEPTH = 5;
+        const currentDepth = context.nestingDepth ?? 0;
+
+        if (currentDepth >= MAX_NESTING_DEPTH) {
+          return failure(
+            startedAt,
+            `Maximum condition nesting depth exceeded (${MAX_NESTING_DEPTH})`
+          );
+        }
+
         const { conditions, logic } = config as {
           conditions: Array<{
             field: string;
@@ -700,7 +712,11 @@ async function executeStep(
         const nestedResults: StepResultRecord[] = [];
 
         if (stepsToRun && stepsToRun.length > 0) {
-          let nestedContext = context;
+          // Increment nesting depth for nested steps
+          let nestedContext = {
+            ...context,
+            nestingDepth: currentDepth + 1,
+          };
 
           for (const nestedStep of stepsToRun) {
             const result = await executeStep(ctx, nestedStep, nestedContext);
@@ -715,11 +731,14 @@ async function executeStep(
 
             if (!result.success) break;
 
-            nestedContext = updateContextAfterStep(
-              nestedContext,
-              nestedStep.id,
-              (result.output as Record<string, unknown>) ?? {}
-            );
+            nestedContext = {
+              ...updateContextAfterStep(
+                nestedContext,
+                nestedStep.id,
+                (result.output as Record<string, unknown>) ?? {}
+              ),
+              nestingDepth: currentDepth + 1,
+            };
           }
         }
 
@@ -808,7 +827,9 @@ async function executeStep(
           }
         }
 
-        // Limit iterations
+        // Limit iterations and track if truncated
+        const originalCount = loopItems.length;
+        const wasTruncated = originalCount > max;
         loopItems = loopItems.slice(0, max);
 
         // Execute loop
@@ -832,9 +853,12 @@ async function executeStep(
             if (!result.success) {
               return success(startedAt, {
                 iterations: i + 1,
-                totalItems: loopItems.length,
+                totalItems: originalCount,
+                itemsProcessed: i + 1,
+                itemsSkipped: wasTruncated ? originalCount - max : 0,
                 loopResults,
                 stoppedEarly: true,
+                truncated: wasTruncated,
               });
             }
           }
@@ -842,8 +866,11 @@ async function executeStep(
 
         return success(startedAt, {
           iterations: loopItems.length,
-          totalItems: loopItems.length,
+          totalItems: originalCount,
+          itemsProcessed: loopItems.length,
+          itemsSkipped: wasTruncated ? originalCount - max : 0,
           loopResults,
+          truncated: wasTruncated,
         });
       }
 
@@ -910,21 +937,6 @@ async function executeStep(
         });
       }
 
-      case "callMcpTool": {
-        // Note: MCP tools are called from the MCP server, not from Convex
-        // This step type is for documentation/planning purposes
-        const { tool, arguments: toolArgs } = config as {
-          tool: string;
-          arguments: Record<string, unknown>;
-        };
-
-        return success(startedAt, {
-          message: "callMcpTool is handled by the MCP server",
-          tool,
-          arguments: toolArgs,
-        });
-      }
-
       default:
         return failure(startedAt, `Unknown step type: ${step.type}`);
     }
@@ -958,56 +970,6 @@ function failure(startedAt: number, error: string): StepResult {
   };
 }
 
-function evaluateCondition(
-  fieldValue: unknown,
-  operator: string,
-  compareValue: unknown
-): boolean {
-  switch (operator) {
-    case "equals":
-      return fieldValue === compareValue;
-    case "notEquals":
-      return fieldValue !== compareValue;
-    case "contains":
-      if (typeof fieldValue === "string" && typeof compareValue === "string") {
-        return fieldValue.toLowerCase().includes(compareValue.toLowerCase());
-      }
-      return false;
-    case "notContains":
-      if (typeof fieldValue === "string" && typeof compareValue === "string") {
-        return !fieldValue.toLowerCase().includes(compareValue.toLowerCase());
-      }
-      return true;
-    case "greaterThan":
-      return (fieldValue as number) > (compareValue as number);
-    case "lessThan":
-      return (fieldValue as number) < (compareValue as number);
-    case "greaterThanOrEquals":
-      return (fieldValue as number) >= (compareValue as number);
-    case "lessThanOrEquals":
-      return (fieldValue as number) <= (compareValue as number);
-    case "isEmpty":
-      return (
-        fieldValue === null ||
-        fieldValue === undefined ||
-        fieldValue === "" ||
-        (Array.isArray(fieldValue) && fieldValue.length === 0)
-      );
-    case "isNotEmpty":
-      return !(
-        fieldValue === null ||
-        fieldValue === undefined ||
-        fieldValue === "" ||
-        (Array.isArray(fieldValue) && fieldValue.length === 0)
-      );
-    case "in":
-      return Array.isArray(compareValue) && compareValue.includes(fieldValue);
-    case "notIn":
-      return Array.isArray(compareValue) && !compareValue.includes(fieldValue);
-    default:
-      return false;
-  }
-}
 
 // ============================================================================
 // ACTION CREATION

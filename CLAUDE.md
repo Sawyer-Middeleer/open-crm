@@ -107,7 +107,7 @@ Step types:
 - **Related record ops**: `updateRelatedRecord` (update field on record via reference)
 - **List ops**: `addToList`, `removeFromList`, `updateListEntry`
 - **Control flow**: `condition` (if/else branches), `loop` (iterate over records/arrays)
-- **External**: `sendWebhook`, `callMcpTool`
+- **External**: `sendWebhook`
 
 Variable interpolation: `{{record.field}}`, `{{previous.output}}`, `{{loopItem}}`, `{{loopIndex}}`
 

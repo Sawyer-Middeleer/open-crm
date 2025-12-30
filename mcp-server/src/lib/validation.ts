@@ -1,13 +1,16 @@
 /**
  * Shared validation utilities
+ *
+ * IMPORTANT: The SSRF validation functions in this file are intentionally duplicated
+ * with convex/lib/urlValidation.ts because Convex backend and MCP server run in
+ * separate environments that cannot share code. Any security fixes must be applied
+ * to BOTH files. The following functions are synchronized:
+ * - normalizeHostname()
+ * - isPrivateIPv6Mapped()
+ * - isBlockedHost()
+ * - validateUrl() / validateUrlForFetch()
  */
 
-/**
- * Normalize hostname for validation
- * - Removes brackets from IPv6 addresses
- * - Decodes URL-encoded characters
- * - Lowercases
- */
 function normalizeHostname(hostname: string): string {
   let normalized = hostname.toLowerCase();
 
@@ -26,10 +29,7 @@ function normalizeHostname(hostname: string): string {
   return normalized;
 }
 
-/**
- * Check if an IPv6-mapped IPv4 address is private
- * Handles both decimal (::ffff:127.0.0.1) and hex (::ffff:7f00:1) notations
- */
+// Handles both decimal (::ffff:127.0.0.1) and hex (::ffff:7f00:1) notations
 function isPrivateIPv6Mapped(host: string): boolean {
   // Match ::ffff: prefix (case insensitive)
   const match = host.match(/^::ffff:(.+)$/i);
@@ -73,9 +73,6 @@ function isPrivateIPv6Mapped(host: string): boolean {
   return false;
 }
 
-/**
- * Check if a hostname is blocked (private IPs, localhost, metadata services)
- */
 export function isBlockedHost(hostname: string): { blocked: boolean; reason?: string } {
   const host = normalizeHostname(hostname);
 
@@ -146,14 +143,8 @@ export function isBlockedHost(hostname: string): { blocked: boolean; reason?: st
   return { blocked: false };
 }
 
-/**
- * Validate URL to prevent SSRF attacks
- * Blocks private IPs, localhost, and cloud metadata services
- *
- * Note: DNS rebinding attacks are not mitigated by this validation.
- * For complete protection, URLs should be resolved and IPs validated
- * immediately before making requests.
- */
+// Note: DNS rebinding attacks are not mitigated - URLs should be resolved
+// and IPs validated immediately before making requests for complete protection.
 export function validateUrl(url: string): { valid: boolean; error?: string } {
   try {
     // Decode URL-encoded characters in the full URL before parsing
@@ -188,10 +179,7 @@ export function validateUrl(url: string): { valid: boolean; error?: string } {
   }
 }
 
-/**
- * Validate a URL pattern that may contain {{variable}} placeholders
- * Used for validating HTTP templates at creation time
- */
+// Validates URL patterns that may contain {{variable}} placeholders
 export function validateUrlPattern(urlPattern: string): {
   valid: boolean;
   error?: string;
@@ -281,9 +269,6 @@ export function validateUrlPattern(urlPattern: string): {
   };
 }
 
-/**
- * Check if error indicates provider is unavailable (network issue)
- */
 export function isNetworkError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const msg = error.message.toLowerCase();
@@ -298,13 +283,8 @@ export function isNetworkError(error: unknown): boolean {
   );
 }
 
-/**
- * Get CORS headers for a request origin
- *
- * SECURITY: When an origin is in the allowlist, credentials are enabled.
- * Only add trusted origins to CORS_ALLOWED_ORIGINS environment variable.
- * Misconfiguration could enable credential theft via cross-origin requests.
- */
+// SECURITY: When an origin is in the allowlist, credentials are enabled.
+// Only add trusted origins to CORS_ALLOWED_ORIGINS.
 export function getCorsHeaders(
   origin: string | null,
   allowedOrigins: string[]
@@ -330,9 +310,6 @@ export function getCorsHeaders(
   return headers;
 }
 
-/**
- * Validate auth context has required fields
- */
 export function validateAuthContext(data: unknown): {
   valid: boolean;
   error?: string;
