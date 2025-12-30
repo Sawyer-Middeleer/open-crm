@@ -7,7 +7,8 @@ import type { OAuthConfig } from "../config.js";
  */
 export function createPropelAuthProvider(
   config: OAuthConfig,
-  convexUrl: string
+  convexUrl: string,
+  autoCreateWorkspace?: boolean
 ): OAuthStrategy | null {
   if (config.provider !== "propelauth") {
     return null;
@@ -27,6 +28,7 @@ export function createPropelAuthProvider(
     issuer: authUrl,
     jwksUri,
     convexUrl,
+    autoCreateWorkspace,
   };
 
   return new OAuthStrategy(strategyConfig);

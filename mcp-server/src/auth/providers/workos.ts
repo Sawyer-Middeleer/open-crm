@@ -7,7 +7,8 @@ import type { OAuthConfig } from "../config.js";
  */
 export function createWorkOSProvider(
   config: OAuthConfig,
-  convexUrl: string
+  convexUrl: string,
+  autoCreateWorkspace?: boolean
 ): OAuthStrategy | null {
   if (config.provider !== "workos") {
     return null;
@@ -27,6 +28,7 @@ export function createWorkOSProvider(
     issuer: "https://api.workos.com",
     jwksUri,
     convexUrl,
+    autoCreateWorkspace,
   };
 
   return new OAuthStrategy(strategyConfig);

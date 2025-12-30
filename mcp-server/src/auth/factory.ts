@@ -18,10 +18,10 @@ export function createAuthManager(config?: AuthConfig): AuthManager {
   // Add OAuth provider if configured
   if (resolvedConfig.oauth) {
     const oauthProvider =
-      createWorkOSProvider(resolvedConfig.oauth, resolvedConfig.convexUrl) ??
-      createPropelAuthProvider(resolvedConfig.oauth, resolvedConfig.convexUrl) ??
-      createAuth0Provider(resolvedConfig.oauth, resolvedConfig.convexUrl) ??
-      createCustomProvider(resolvedConfig.oauth, resolvedConfig.convexUrl);
+      createWorkOSProvider(resolvedConfig.oauth, resolvedConfig.convexUrl, resolvedConfig.autoCreateWorkspace) ??
+      createPropelAuthProvider(resolvedConfig.oauth, resolvedConfig.convexUrl, resolvedConfig.autoCreateWorkspace) ??
+      createAuth0Provider(resolvedConfig.oauth, resolvedConfig.convexUrl, resolvedConfig.autoCreateWorkspace) ??
+      createCustomProvider(resolvedConfig.oauth, resolvedConfig.convexUrl, resolvedConfig.autoCreateWorkspace);
 
     if (oauthProvider) {
       providers.push(oauthProvider);

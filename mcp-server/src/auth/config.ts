@@ -8,10 +8,8 @@ export interface OAuthConfig {
   provider: AuthProviderType;
   // WorkOS
   workosClientId?: string;
-  workosApiKey?: string;
   // PropelAuth
   propelAuthUrl?: string;
-  propelApiKey?: string;
   // Auth0
   auth0Domain?: string;
   auth0Audience?: string;
@@ -30,6 +28,10 @@ export interface AuthConfig {
 
   // Convex URL
   convexUrl: string;
+
+  // Auto-create workspace for new users without any workspace memberships
+  // Default: true
+  autoCreateWorkspace?: boolean;
 }
 
 /**
@@ -44,6 +46,8 @@ export function loadAuthConfig(): AuthConfig {
   const config: AuthConfig = {
     convexUrl,
     resourceUri: process.env.MCP_RESOURCE_URI,
+    // Default to true unless explicitly disabled
+    autoCreateWorkspace: process.env.DISABLE_AUTO_WORKSPACE !== "true",
   };
 
   // Determine OAuth provider from environment
@@ -55,12 +59,10 @@ export function loadAuthConfig(): AuthConfig {
     switch (provider) {
       case "workos":
         config.oauth.workosClientId = process.env.WORKOS_CLIENT_ID;
-        config.oauth.workosApiKey = process.env.WORKOS_API_KEY;
         break;
 
       case "propelauth":
         config.oauth.propelAuthUrl = process.env.PROPELAUTH_AUTH_URL;
-        config.oauth.propelApiKey = process.env.PROPELAUTH_API_KEY;
         break;
 
       case "auth0":

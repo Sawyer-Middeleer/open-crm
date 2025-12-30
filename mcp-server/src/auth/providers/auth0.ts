@@ -7,7 +7,8 @@ import type { OAuthConfig } from "../config.js";
  */
 export function createAuth0Provider(
   config: OAuthConfig,
-  convexUrl: string
+  convexUrl: string,
+  autoCreateWorkspace?: boolean
 ): OAuthStrategy | null {
   if (config.provider !== "auth0") {
     return null;
@@ -29,6 +30,7 @@ export function createAuth0Provider(
     jwksUri,
     audience: config.auth0Audience,
     convexUrl,
+    autoCreateWorkspace,
   };
 
   return new OAuthStrategy(strategyConfig);

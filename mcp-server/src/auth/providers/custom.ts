@@ -6,7 +6,8 @@ import type { OAuthConfig } from "../config.js";
  */
 export function createCustomProvider(
   config: OAuthConfig,
-  convexUrl: string
+  convexUrl: string,
+  autoCreateWorkspace?: boolean
 ): OAuthStrategy | null {
   if (config.provider !== "custom") {
     return null;
@@ -23,6 +24,7 @@ export function createCustomProvider(
     jwksUri: config.jwksUri,
     audience: config.audience,
     convexUrl,
+    autoCreateWorkspace,
   };
 
   return new OAuthStrategy(strategyConfig);

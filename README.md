@@ -59,12 +59,92 @@ bun run dev:mcp
 
 The HTTP MCP server will start on `http://localhost:3000/mcp`.
 
-### 5. Create a User and Workspace
+### 5. Configure Authentication
 
-The MCP server requires OAuth authentication. For development, create a user via the Convex dashboard:
+The MCP server requires OAuth authentication. Choose a provider and configure it:
 
-1. Go to **Functions** → `auth/mutations:upsertFromOAuth`
-2. Run with your OAuth provider details, or for development:
+#### Option A: PropelAuth (Recommended for quick setup)
+
+1. Create a project at [propelauth.com](https://propelauth.com)
+2. Go to **OAuth Config** → create an OAuth client
+   - Note the **Client ID** and add your redirect URI
+3. Add to `mcp-server/.env`:
+   ```bash
+   MCP_AUTH_PROVIDER=propelauth
+   PROPELAUTH_AUTH_URL=https://auth.yourproject.propelauthtest.com
+   ```
+
+#### Option B: Auth0
+
+1. Create a tenant at [auth0.com](https://auth0.com)
+2. Create an **API** (Applications → APIs):
+   - Identifier: `https://api.agent-crm.example`
+3. Create an **Application** (Machine to Machine for agents, or SPA/Web App for users)
+4. Add to `mcp-server/.env`:
+   ```bash
+   MCP_AUTH_PROVIDER=auth0
+   AUTH0_DOMAIN=your-tenant.auth0.com
+   AUTH0_AUDIENCE=https://api.agent-crm.example
+   ```
+
+#### Option C: WorkOS
+
+1. Create an account at [workos.com](https://workos.com)
+2. Go to **Configuration** → **OAuth** → create an application
+3. Add to `mcp-server/.env`:
+   ```bash
+   MCP_AUTH_PROVIDER=workos
+   WORKOS_CLIENT_ID=client_01HXXXXXX
+   ```
+
+#### Option D: Custom JWKS (Any OIDC Provider)
+
+```bash
+MCP_AUTH_PROVIDER=custom
+OAUTH_ISSUER=https://your-idp.com
+OAUTH_JWKS_URI=https://your-idp.com/.well-known/jwks.json
+OAUTH_AUDIENCE=https://api.agent-crm.example  # Optional
+```
+
+### 6. First Login
+
+When you authenticate for the first time:
+- A **user record** is automatically created from your OAuth token
+- A **default workspace** is automatically created with People, Companies, and Deals object types
+- You become the workspace **owner**
+
+No manual user or workspace creation required!
+
+## Authentication
+
+The MCP server uses OAuth 2.1 (RFC 9728 compliant). It validates JWT tokens issued by your OAuth provider.
+
+**Request format:**
+```bash
+curl -X POST http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <jwt_token>" \
+  -d '{"jsonrpc": "2.0", ...}'
+```
+
+**Notes:**
+- `X-Workspace-Id` header is optional for new users (workspace auto-created)
+- Existing users with multiple workspaces must specify `X-Workspace-Id`
+- M2M tokens can include `workspace_id` claim to skip the header
+
+See [CLAUDE.md](./CLAUDE.md) for detailed OAuth provider setup instructions.
+
+## Using with Claude Code
+
+### Option 1: Remote MCP (HTTP with OAuth) - Recommended
+
+Connect Claude Code to your deployed MCP server via HTTP. Authentication is handled automatically via OAuth - just authenticate when prompted and your workspace will be created automatically on first login.
+
+### Option 2: Local Development (stdio)
+
+For local development, Claude Code can spawn the server as a subprocess. This requires manual user/workspace setup:
+
+1. Create a dev user via Convex dashboard (**Functions** → `auth/mutations:upsertFromOAuth`):
    ```json
    {
      "authProvider": "dev",
@@ -74,72 +154,34 @@ The MCP server requires OAuth authentication. For development, create a user via
    }
    ```
 
-3. Configure an OAuth provider (see Authentication below)
+2. Create a workspace via **Functions** → `workspaces/mutations:create`:
+   ```json
+   {
+     "name": "Dev Workspace",
+     "slug": "dev-workspace",
+     "userId": "<USER_ID_FROM_STEP_1>"
+   }
+   ```
 
-4. Use the MCP `workspace.create` tool to create a workspace
+3. Create `.mcp.json` in the project root:
+   ```json
+   {
+     "mcpServers": {
+       "agent-crm": {
+         "type": "stdio",
+         "command": "bun",
+         "args": ["run", "mcp-server/src/stdio.ts"],
+         "env": {
+           "CONVEX_URL": "https://your-deployment.convex.cloud",
+           "DEV_USER_EMAIL": "you@example.com",
+           "DEV_WORKSPACE_ID": "YOUR_WORKSPACE_ID"
+         }
+       }
+     }
+   }
+   ```
 
-## Authentication
-
-The MCP server uses OAuth 2.1 (RFC 9728 compliant). Configure an OAuth provider in your `.env`:
-
-```bash
-# WorkOS
-MCP_AUTH_PROVIDER=workos
-WORKOS_CLIENT_ID=client_xxx
-
-# PropelAuth
-MCP_AUTH_PROVIDER=propelauth
-PROPELAUTH_AUTH_URL=https://xxx.propelauthtest.com
-
-# Auth0
-MCP_AUTH_PROVIDER=auth0
-AUTH0_DOMAIN=your-tenant.auth0.com
-AUTH0_AUDIENCE=https://api.agent-crm.example
-
-# Custom JWKS
-MCP_AUTH_PROVIDER=custom
-OAUTH_ISSUER=https://your-idp.com
-OAUTH_JWKS_URI=https://your-idp.com/.well-known/jwks.json
-OAUTH_AUDIENCE=https://api.agent-crm.example
-```
-
-Then use Bearer tokens:
-
-```bash
-curl -X POST http://localhost:3000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <jwt_token>" \
-  -H "X-Workspace-Id: <workspace_id>" \
-  -d '{"jsonrpc": "2.0", ...}'
-```
-
-## Using with Claude Code
-
-Claude Code connects via stdio transport (spawns the server as a subprocess). Create `.mcp.json` in the project root:
-
-```json
-{
-  "mcpServers": {
-    "agent-crm": {
-      "type": "stdio",
-      "command": "bun",
-      "args": ["run", "mcp-server/src/stdio.ts"],
-      "env": {
-        "CONVEX_URL": "https://your-deployment.convex.cloud",
-        "DEV_USER_EMAIL": "you@example.com",
-        "DEV_WORKSPACE_ID": "YOUR_WORKSPACE_ID"
-      }
-    }
-  }
-}
-```
-
-Replace:
-- `CONVEX_URL` with your Convex deployment URL (from `.env.local`)
-- `DEV_USER_EMAIL` with the email from your dev user (Setup step 5)
-- `DEV_WORKSPACE_ID` with your workspace ID from the Convex dashboard
-
-Restart Claude Code or run `/mcp` to verify the connection. The agent-crm tools will appear in the tool list.
+4. Restart Claude Code or run `/mcp` to verify the connection.
 
 Note: Stdio transport is recommended for local development. For production integrations, use the HTTP transport with OAuth 2.1.
 

@@ -16,6 +16,7 @@ export interface OAuthStrategyConfig {
   jwksUri: string;
   audience?: string;
   convexUrl: string;
+  autoCreateWorkspace?: boolean;
 }
 
 /**
@@ -73,8 +74,25 @@ export class OAuthStrategy implements AuthProvider {
       throw new AuthError("Token has expired", 401, this.name, "invalid_token");
     }
 
-    // Get or create user
-    const userId = await this.getOrCreateUser(claims);
+    // Get or create user (may auto-create workspace)
+    const userResult = await this.getOrCreateUser(claims);
+
+    // Extract scopes from JWT (space-separated per RFC 8693 or array)
+    const scopes = this.extractScopes(claims);
+
+    // If workspace was auto-created, use it directly
+    if (userResult.workspaceId && userResult.workspaceMemberId) {
+      return {
+        userId: userResult.userId,
+        email: claims.email,
+        workspaceId: userResult.workspaceId as Id<"workspaces">,
+        workspaceMemberId: userResult.workspaceMemberId as Id<"workspaceMembers">,
+        role: "owner", // Auto-created workspaces make user the owner
+        authMethod: "oauth",
+        provider: this.config.providerName,
+        scopes,
+      };
+    }
 
     // Get workspace ID from token claim (M2M) or header (interactive)
     const workspaceIdStr = this.extractWorkspaceId(claims, request);
@@ -83,7 +101,7 @@ export class OAuthStrategy implements AuthProvider {
     const member = await this.convex.query(
       api.functions.auth.queries.getMemberByUserAndWorkspace,
       {
-        userId: userId,
+        userId: userResult.userId,
         workspaceId: workspaceIdStr as Id<"workspaces">,
       }
     );
@@ -96,11 +114,8 @@ export class OAuthStrategy implements AuthProvider {
       );
     }
 
-    // Extract scopes from JWT (space-separated per RFC 8693 or array)
-    const scopes = this.extractScopes(claims);
-
     return {
-      userId,
+      userId: userResult.userId,
       email: claims.email,
       workspaceId: workspaceIdStr as Id<"workspaces">,
       workspaceMemberId: member._id,
@@ -165,7 +180,13 @@ export class OAuthStrategy implements AuthProvider {
     return [];
   }
 
-  private async getOrCreateUser(claims: TokenClaims): Promise<Id<"users">> {
+  private async getOrCreateUser(claims: TokenClaims): Promise<{
+    userId: Id<"users">;
+    workspaceId?: string;
+    workspaceMemberId?: string;
+    isNewUser: boolean;
+    isNewWorkspace: boolean;
+  }> {
     if (!claims.email) {
       throw new AuthError(
         "Token missing email claim",
@@ -175,17 +196,24 @@ export class OAuthStrategy implements AuthProvider {
       );
     }
 
-    // Upsert user
-    const userId = await this.convex.mutation(
-      api.functions.auth.mutations.upsertFromOAuth,
+    // Upsert user with optional workspace auto-creation
+    const result = await this.convex.mutation(
+      api.functions.auth.mutations.upsertFromOAuthWithWorkspace,
       {
         authProvider: this.config.providerName,
         authProviderId: claims.sub,
         email: claims.email,
         name: (claims.name as string) ?? undefined,
+        autoCreateWorkspace: this.config.autoCreateWorkspace,
       }
     );
 
-    return userId;
+    return {
+      userId: result.userId as Id<"users">,
+      workspaceId: result.workspaceId,
+      workspaceMemberId: result.workspaceMemberId,
+      isNewUser: result.isNewUser,
+      isNewWorkspace: result.isNewWorkspace,
+    };
   }
 }
