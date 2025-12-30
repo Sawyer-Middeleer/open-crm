@@ -6,6 +6,14 @@ import { computeHmacSignature } from "./functions/integrations/mutations";
 
 const http = httpRouter();
 
+function headersToObject(headers: Headers): Record<string, string> {
+  const out: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    out[key] = value;
+  });
+  return out;
+}
+
 /**
  * Handle incoming webhook requests
  * Route: POST /webhooks/:workspaceId/:slug
@@ -52,7 +60,7 @@ http.route({
       await ctx.runMutation(internal.functions.integrations.mutations.logIncomingWebhook, {
         workspaceId,
         webhookId: webhook._id,
-        headers: Object.fromEntries(request.headers.entries()),
+        headers: headersToObject(request.headers),
         sourceIp,
         status: "inactive",
         error: "Webhook is disabled",
@@ -78,7 +86,7 @@ http.route({
           await ctx.runMutation(internal.functions.integrations.mutations.logIncomingWebhook, {
             workspaceId,
             webhookId: webhook._id,
-            headers: Object.fromEntries(request.headers.entries()),
+            headers: headersToObject(request.headers),
             payload,
             sourceIp,
             status: "invalid_signature",
@@ -95,7 +103,7 @@ http.route({
       await ctx.runMutation(internal.functions.integrations.mutations.logIncomingWebhook, {
         workspaceId,
         webhookId: webhook._id,
-        headers: Object.fromEntries(request.headers.entries()),
+        headers: headersToObject(request.headers),
         sourceIp,
         status: "failed",
         error: "Invalid JSON payload",
@@ -118,7 +126,7 @@ http.route({
           await ctx.runMutation(internal.functions.integrations.mutations.logIncomingWebhook, {
             workspaceId,
             webhookId: webhook._id,
-            headers: Object.fromEntries(request.headers.entries()),
+            headers: headersToObject(request.headers),
             payload,
             sourceIp,
             status: "failed",
@@ -152,7 +160,7 @@ http.route({
           await ctx.runMutation(internal.functions.integrations.mutations.logIncomingWebhook, {
             workspaceId,
             webhookId: webhook._id,
-            headers: Object.fromEntries(request.headers.entries()),
+            headers: headersToObject(request.headers),
             payload,
             sourceIp,
             status: "failed",
@@ -170,7 +178,7 @@ http.route({
           await ctx.runMutation(internal.functions.integrations.mutations.logIncomingWebhook, {
             workspaceId,
             webhookId: webhook._id,
-            headers: Object.fromEntries(request.headers.entries()),
+            headers: headersToObject(request.headers),
             payload,
             sourceIp,
             status: "failed",
@@ -204,7 +212,7 @@ http.route({
       await ctx.runMutation(internal.functions.integrations.mutations.logIncomingWebhook, {
         workspaceId,
         webhookId: webhook._id,
-        headers: Object.fromEntries(request.headers.entries()),
+        headers: headersToObject(request.headers),
         payload,
         sourceIp,
         status: "success",
@@ -231,7 +239,7 @@ http.route({
       await ctx.runMutation(internal.functions.integrations.mutations.logIncomingWebhook, {
         workspaceId,
         webhookId: webhook._id,
-        headers: Object.fromEntries(request.headers.entries()),
+        headers: headersToObject(request.headers),
         payload,
         sourceIp,
         status: "failed",
@@ -259,3 +267,4 @@ http.route({
 });
 
 export default http;
+
