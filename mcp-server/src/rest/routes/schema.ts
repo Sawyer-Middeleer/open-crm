@@ -4,6 +4,7 @@ import { createAuthMiddleware, type AuthVariables } from "../middleware/auth.js"
 import { userRateLimitMiddleware } from "../middleware/rateLimit.js";
 import type { RestApiDependencies } from "../index.js";
 import { ErrorResponseSchema, AttributeTypeSchema } from "../schemas/common.js";
+import { toHonoPath } from "../utils/path.js";
 
 export function createSchemaRoutes(deps: RestApiDependencies) {
   const app = new OpenAPIHono<{ Variables: AuthVariables }>();
@@ -61,7 +62,7 @@ export function createSchemaRoutes(deps: RestApiDependencies) {
     },
   });
 
-  app.use(getRoute.path, createAuthMiddleware(authManager, "crm:read"), userRateLimitMiddleware);
+  app.use(toHonoPath(getRoute.path), createAuthMiddleware(authManager, "crm:read"), userRateLimitMiddleware);
   app.openapi(getRoute, async (c) => {
     const auth = c.get("auth");
     const { slug } = c.req.valid("param");
@@ -166,7 +167,7 @@ export function createSchemaRoutes(deps: RestApiDependencies) {
     },
   });
 
-  app.use(createAttributeRoute.path, createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
+  app.use(toHonoPath(createAttributeRoute.path), createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
   app.openapi(createAttributeRoute, async (c) => {
     const auth = c.get("auth");
     const { slug: objectTypeSlug } = c.req.valid("param");

@@ -10,6 +10,7 @@ import {
   TriggerTypeSchema,
   StepTypeSchema,
 } from "../schemas/common.js";
+import { toHonoPath } from "../utils/path.js";
 
 export function createActionsRoutes(deps: RestApiDependencies) {
   const app = new OpenAPIHono<{ Variables: AuthVariables }>();
@@ -166,7 +167,7 @@ export function createActionsRoutes(deps: RestApiDependencies) {
     },
   });
 
-  app.use(deleteRoute.path, createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
+  app.use(toHonoPath(deleteRoute.path), createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
   app.openapi(deleteRoute, async (c) => {
     const auth = c.get("auth");
     const { id } = c.req.valid("param");
@@ -210,7 +211,7 @@ export function createActionsRoutes(deps: RestApiDependencies) {
     },
   });
 
-  app.use(executeRoute.path, createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
+  app.use(toHonoPath(executeRoute.path), createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
   app.openapi(executeRoute, async (c) => {
     const auth = c.get("auth");
     const { slug } = c.req.valid("param");

@@ -5,6 +5,7 @@ import { createAuthMiddleware, type AuthVariables } from "../middleware/auth.js"
 import { userRateLimitMiddleware } from "../middleware/rateLimit.js";
 import type { RestApiDependencies } from "../index.js";
 import { ErrorResponseSchema, MemberRoleSchema } from "../schemas/common.js";
+import { toHonoPath } from "../utils/path.js";
 
 export function createWorkspacesRoutes(deps: RestApiDependencies) {
   const app = new OpenAPIHono<{ Variables: AuthVariables }>();
@@ -85,7 +86,7 @@ export function createWorkspacesRoutes(deps: RestApiDependencies) {
     },
   });
 
-  app.use(updateMemberRoute.path, createAuthMiddleware(authManager, "crm:admin"), userRateLimitMiddleware);
+  app.use(toHonoPath(updateMemberRoute.path), createAuthMiddleware(authManager, "crm:admin"), userRateLimitMiddleware);
   app.openapi(updateMemberRoute, async (c) => {
     const auth = c.get("auth");
     const { id } = c.req.valid("param");
@@ -123,7 +124,7 @@ export function createWorkspacesRoutes(deps: RestApiDependencies) {
     },
   });
 
-  app.use(removeMemberRoute.path, createAuthMiddleware(authManager, "crm:admin"), userRateLimitMiddleware);
+  app.use(toHonoPath(removeMemberRoute.path), createAuthMiddleware(authManager, "crm:admin"), userRateLimitMiddleware);
   app.openapi(removeMemberRoute, async (c) => {
     const auth = c.get("auth");
     const { id } = c.req.valid("param");

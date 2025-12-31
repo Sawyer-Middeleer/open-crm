@@ -11,6 +11,7 @@ import {
   SearchFilterSchema,
   MergeStrategySchema,
 } from "../schemas/common.js";
+import { toHonoPath } from "../utils/path.js";
 
 export function createRecordsRoutes(deps: RestApiDependencies) {
   const app = new OpenAPIHono<{ Variables: AuthVariables }>();
@@ -89,7 +90,7 @@ export function createRecordsRoutes(deps: RestApiDependencies) {
     },
   });
 
-  app.use(getRoute.path, createAuthMiddleware(authManager, "crm:read"), userRateLimitMiddleware);
+  app.use(toHonoPath(getRoute.path), createAuthMiddleware(authManager, "crm:read"), userRateLimitMiddleware);
   app.openapi(getRoute, async (c) => {
     const auth = c.get("auth");
     const { id } = c.req.valid("param");
@@ -176,7 +177,7 @@ export function createRecordsRoutes(deps: RestApiDependencies) {
     },
   });
 
-  app.use(updateRoute.path, createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
+  app.use(toHonoPath(updateRoute.path), createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
   app.openapi(updateRoute, async (c) => {
     const auth = c.get("auth");
     const { id } = c.req.valid("param");
@@ -210,7 +211,7 @@ export function createRecordsRoutes(deps: RestApiDependencies) {
     },
   });
 
-  app.use(deleteRoute.path, createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
+  app.use(toHonoPath(deleteRoute.path), createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
   app.openapi(deleteRoute, async (c) => {
     const auth = c.get("auth");
     const { id } = c.req.valid("param");
@@ -241,7 +242,7 @@ export function createRecordsRoutes(deps: RestApiDependencies) {
     },
   });
 
-  app.use(archiveRoute.path, createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
+  app.use(toHonoPath(archiveRoute.path), createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
   app.openapi(archiveRoute, async (c) => {
     const auth = c.get("auth");
     const { id } = c.req.valid("param");
@@ -272,7 +273,7 @@ export function createRecordsRoutes(deps: RestApiDependencies) {
     },
   });
 
-  app.use(restoreRoute.path, createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
+  app.use(toHonoPath(restoreRoute.path), createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
   app.openapi(restoreRoute, async (c) => {
     const auth = c.get("auth");
     const { id } = c.req.valid("param");
@@ -361,7 +362,7 @@ export function createRecordsRoutes(deps: RestApiDependencies) {
     },
   });
 
-  app.use(relatedRoute.path, createAuthMiddleware(authManager, "crm:read"), userRateLimitMiddleware);
+  app.use(toHonoPath(relatedRoute.path), createAuthMiddleware(authManager, "crm:read"), userRateLimitMiddleware);
   app.openapi(relatedRoute, async (c) => {
     const auth = c.get("auth");
     const { id } = c.req.valid("param");
@@ -397,7 +398,7 @@ export function createRecordsRoutes(deps: RestApiDependencies) {
     },
   });
 
-  app.use(historyRoute.path, createAuthMiddleware(authManager, "crm:read"), userRateLimitMiddleware);
+  app.use(toHonoPath(historyRoute.path), createAuthMiddleware(authManager, "crm:read"), userRateLimitMiddleware);
   app.openapi(historyRoute, async (c) => {
     const auth = c.get("auth");
     const { id } = c.req.valid("param");

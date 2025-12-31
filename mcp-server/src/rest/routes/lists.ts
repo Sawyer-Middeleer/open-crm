@@ -5,6 +5,7 @@ import { createAuthMiddleware, type AuthVariables } from "../middleware/auth.js"
 import { userRateLimitMiddleware } from "../middleware/rateLimit.js";
 import type { RestApiDependencies } from "../index.js";
 import { RecordIdSchema, ErrorResponseSchema, AttributeTypeSchema } from "../schemas/common.js";
+import { toHonoPath } from "../utils/path.js";
 
 export function createListsRoutes(deps: RestApiDependencies) {
   const app = new OpenAPIHono<{ Variables: AuthVariables }>();
@@ -96,7 +97,7 @@ export function createListsRoutes(deps: RestApiDependencies) {
     },
   });
 
-  app.use(getEntriesRoute.path, createAuthMiddleware(authManager, "crm:read"), userRateLimitMiddleware);
+  app.use(toHonoPath(getEntriesRoute.path), createAuthMiddleware(authManager, "crm:read"), userRateLimitMiddleware);
   app.openapi(getEntriesRoute, async (c) => {
     const auth = c.get("auth");
     const { slug } = c.req.valid("param");
@@ -143,7 +144,7 @@ export function createListsRoutes(deps: RestApiDependencies) {
     },
   });
 
-  app.use(addEntryRoute.path, createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
+  app.use(toHonoPath(addEntryRoute.path), createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
   app.openapi(addEntryRoute, async (c) => {
     const auth = c.get("auth");
     const { slug } = c.req.valid("param");
@@ -185,7 +186,7 @@ export function createListsRoutes(deps: RestApiDependencies) {
     },
   });
 
-  app.use(removeEntryRoute.path, createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
+  app.use(toHonoPath(removeEntryRoute.path), createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
   app.openapi(removeEntryRoute, async (c) => {
     const auth = c.get("auth");
     const { slug, recordId } = c.req.valid("param");
@@ -236,7 +237,7 @@ export function createListsRoutes(deps: RestApiDependencies) {
     },
   });
 
-  app.use(bulkAddRoute.path, createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
+  app.use(toHonoPath(bulkAddRoute.path), createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
   app.openapi(bulkAddRoute, async (c) => {
     const auth = c.get("auth");
     const { slug } = c.req.valid("param");
@@ -289,7 +290,7 @@ export function createListsRoutes(deps: RestApiDependencies) {
     },
   });
 
-  app.use(bulkRemoveRoute.path, createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
+  app.use(toHonoPath(bulkRemoveRoute.path), createAuthMiddleware(authManager, "crm:write"), userRateLimitMiddleware);
   app.openapi(bulkRemoveRoute, async (c) => {
     const auth = c.get("auth");
     const { slug } = c.req.valid("param");
