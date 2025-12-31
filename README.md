@@ -10,6 +10,7 @@ A headless, MCP-first CRM
 - **Full Audit Trail**: Every change logged with before/after snapshots
 - **Composable Actions**: Automation via predefined step types (no code execution)
 - **Multi-tenant**: Workspace isolation from day one
+- **Dual API**: MCP protocol for AI agents + REST API for traditional integrations
 
 ## Prerequisites
 
@@ -57,7 +58,10 @@ Find your deployment URL in the Convex dashboard or in `.env.local` after runnin
 bun run dev:mcp
 ```
 
-The HTTP MCP server will start on `http://localhost:3000/mcp`.
+The server will start on `http://localhost:3000` with:
+- **MCP endpoint**: `http://localhost:3000/mcp`
+- **REST API**: `http://localhost:3000/api/v1`
+- **API Docs**: `http://localhost:3000/api/v1/docs`
 
 ### 5. Configure Authentication
 
@@ -199,15 +203,15 @@ The server exposes a standard MCP HTTP endpoint at `/mcp`. Connect using any MCP
 | `records.list` | List records of an object type |
 | `records.update` | Update record fields |
 | `records.delete` | Delete a record |
-| `records.search` | Search/filter records by field values with operators (equals, contains, greaterThan, etc.) |
-| `records.getRelated` | Get all related records via references and list memberships |
-
-### Bulk Import
-| Tool | Description |
-|------|-------------|
-| `records.bulkValidate` | Validate records before import, returns summary + session ID |
+| `records.archive` | Archive a record (soft delete) |
+| `records.restore` | Restore an archived record |
+| `records.search` | Search/filter records by field values |
+| `records.getRelated` | Get related records via references and list memberships |
+| `records.bulkValidate` | Validate records before import |
 | `records.bulkCommit` | Insert validated records from a session |
 | `records.bulkInspect` | Inspect specific records from a validation session |
+| `records.bulkUpdate` | Update multiple records with the same values |
+| `records.merge` | Merge source records into a target record |
 
 ### Schema
 | Tool | Description |
@@ -224,11 +228,15 @@ The server exposes a standard MCP HTTP endpoint at `/mcp`. Connect using any MCP
 | `lists.getEntries` | Get list entries (optionally by parent) |
 | `lists.addEntry` | Add record to a list |
 | `lists.removeEntry` | Remove record from a list |
+| `lists.bulkAddEntry` | Add multiple records to a list |
+| `lists.bulkRemoveEntry` | Remove multiple records from a list |
 
 ### Workspace
 | Tool | Description |
 |------|-------------|
 | `workspace.create` | Create a new workspace with seeded object types |
+| `workspace.updateMember` | Update a workspace member's role |
+| `workspace.removeMember` | Remove a member from the workspace |
 
 ### Actions
 | Tool | Description |
@@ -236,6 +244,7 @@ The server exposes a standard MCP HTTP endpoint at `/mcp`. Connect using any MCP
 | `actions.create` | Create automation with triggers, conditions, and 15 step types |
 | `actions.list` | List available actions |
 | `actions.execute` | Run an action on a record |
+| `actions.delete` | Delete an action |
 
 ### Integrations
 | Tool | Description |
@@ -258,6 +267,31 @@ The server exposes a standard MCP HTTP endpoint at `/mcp`. Connect using any MCP
 | Tool | Description |
 |------|-------------|
 | `audit.getHistory` | Get change history for a record |
+
+## REST API
+
+A RESTful HTTP API runs at `/api/v1` with full parity to the MCP tools. Use this for traditional integrations, webhooks, or any HTTP client.
+
+**Documentation**: Visit `/api/v1/docs` for interactive Swagger UI, or `/api/v1/openapi.json` for the OpenAPI spec.
+
+**Authentication**: Same OAuth 2.1 as MCP - include `Authorization: Bearer <token>` header.
+
+**Example**:
+```bash
+# Create a record
+curl -X POST http://localhost:3000/api/v1/records \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"objectType": "people", "data": {"name": "Jane Doe", "email": "jane@example.com"}}'
+
+# Search records
+curl -X POST http://localhost:3000/api/v1/records/search \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"objectType": "deals", "filters": [{"field": "stage", "operator": "equals", "value": "won"}]}'
+```
+
+See [CLAUDE.md](./CLAUDE.md) for full endpoint reference.
 
 ## Example Usage
 
@@ -313,12 +347,12 @@ bun run dev:mcp
 
 See [CLAUDE.md](./CLAUDE.md) for detailed architecture documentation including:
 
-- High-level system architecture diagram
-- Authentication flow
-- Record CRUD flow with trigger evaluation
-- Action execution engine
+- Directory structure and core concepts
+- MCP tools reference (41 tools)
+- REST API reference (41 endpoints)
+- Authentication flow (OAuth 2.1)
 - Multi-tenancy structure
-- Webhook integration (incoming/outgoing)
+- Environment variables
 
 ## License
 

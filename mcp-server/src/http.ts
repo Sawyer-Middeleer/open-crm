@@ -17,6 +17,8 @@ import {
   userLimiter,
   createRateLimitResponse,
 } from "./lib/rateLimiter.js";
+import { getConvexClient } from "./convex/client.js";
+import { createRestApi } from "./rest/index.js";
 
 // Session TTL configuration (configurable via env vars)
 const SESSION_TTL_MS = parseInt(process.env.SESSION_TTL_MINUTES || "30", 10) * 60 * 1000;
@@ -180,6 +182,10 @@ export async function startHttpServer(): Promise<void> {
   const config = loadAuthConfig();
   const authManager = createAuthManager(config);
   const mcpServer = createServer();
+  const convex = getConvexClient();
+
+  // Create REST API with shared dependencies
+  const restApi = createRestApi({ authManager, convex });
 
   const port = parseInt(process.env.PORT ?? "3000", 10);
   const hostname = process.env.HOSTNAME ?? "0.0.0.0";
@@ -233,6 +239,29 @@ export async function startHttpServer(): Promise<void> {
       // Health check
       if (url.pathname === "/health") {
         return handleHealthCheck();
+      }
+
+      // REST API endpoint
+      if (url.pathname.startsWith("/api/v1")) {
+        // Rewrite path to remove /api/v1 prefix for Hono router
+        const restUrl = new URL(url.pathname.replace("/api/v1", "") || "/", request.url);
+        const restRequest = new Request(restUrl.toString(), request);
+
+        const response = await restApi.fetch(restRequest);
+
+        // Add CORS headers to response
+        const origin = request.headers.get("origin");
+        const corsHeaderValues = getCorsHeaders(origin, ALLOWED_ORIGINS);
+        const responseHeaders = new Headers(response.headers);
+        for (const [key, value] of Object.entries(corsHeaderValues)) {
+          responseHeaders.set(key, value);
+        }
+
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: responseHeaders,
+        });
       }
 
       // MCP endpoint
@@ -378,6 +407,8 @@ export async function startHttpServer(): Promise<void> {
 
   console.log(`[MCP] HTTP server running on http://${hostname}:${port}`);
   console.log(`[MCP] MCP endpoint: http://${hostname}:${port}/mcp`);
+  console.log(`[REST] REST API: http://${hostname}:${port}/api/v1`);
+  console.log(`[REST] API Docs: http://${hostname}:${port}/api/v1/docs`);
   console.log(`[MCP] Health check: http://${hostname}:${port}/health`);
 }
 
