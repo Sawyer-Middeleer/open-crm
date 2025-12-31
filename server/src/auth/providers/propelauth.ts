@@ -29,6 +29,8 @@ export function createPropelAuthProvider(
     jwksUri,
     convexUrl,
     autoCreateWorkspace,
+    // PropelAuth doesn't include custom scopes in tokens, so default to full access
+    defaultScopes: ["crm:admin"],
   };
 
   return new OAuthStrategy(strategyConfig);

@@ -17,6 +17,8 @@ export interface OAuthStrategyConfig {
   audience?: string;
   convexUrl: string;
   autoCreateWorkspace?: boolean;
+  /** Default scopes when token has none (e.g., PropelAuth doesn't include custom scopes) */
+  defaultScopes?: string[];
 }
 
 /**
@@ -164,19 +166,26 @@ export class OAuthStrategy implements AuthProvider {
   /**
    * Extract scopes from JWT claims
    * Handles both space-separated string (RFC 8693) and array formats
+   * Falls back to configured default scopes if none in token
    */
   private extractScopes(claims: TokenClaims): string[] {
     // Space-separated string (OAuth 2.0 / RFC 8693)
     if (typeof claims.scope === "string") {
-      return claims.scope.split(" ").filter(Boolean);
+      const scopes = claims.scope.split(" ").filter(Boolean);
+      if (scopes.length > 0) return scopes;
     }
 
     // Array format (some providers use this)
-    if (Array.isArray(claims.scp)) {
+    if (Array.isArray(claims.scp) && claims.scp.length > 0) {
       return claims.scp;
     }
 
-    // No scopes in token
+    // Fall back to default scopes (for providers like PropelAuth that don't include custom scopes)
+    if (this.config.defaultScopes && this.config.defaultScopes.length > 0) {
+      return this.config.defaultScopes;
+    }
+
+    // No scopes in token or defaults
     return [];
   }
 
