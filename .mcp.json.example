@@ -3,7 +3,7 @@
     "open-crm": {
       "type": "stdio",
       "command": "bun",
-      "args": ["run", "mcp-server/src/stdio.ts"],
+      "args": ["run", "server/src/stdio.ts"],
       "env": {
         "CONVEX_URL": "https://your-deployment.convex.cloud",
         "DEV_USER_EMAIL": "you@example.com",

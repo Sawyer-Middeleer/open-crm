@@ -58,7 +58,7 @@ bun run build            # Deploys to Convex production
 │       ├── auth/               # Auth queries and mutations
 │       └── audit/              # Audit log queries
 │
-├── mcp-server/                 # HTTP MCP server (Bun)
+├── server/                     # HTTP + MCP server (Bun)
 │   └── src/
 │       ├── index.ts            # Entry point (starts HTTP server)
 │       ├── http.ts             # HTTP server with auth middleware

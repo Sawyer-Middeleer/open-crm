@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "convex dev",
-    "dev:mcp": "bun run mcp-server/src/index.ts",
+    "dev:server": "bun run server/src/index.ts",
     "build": "convex deploy"
   },
   "dependencies": {

@@ -23,7 +23,7 @@ A headless, MCP-first CRM
 
 ```bash
 bun install
-cd mcp-server && bun install && cd ..
+cd server && bun install && cd ..
 ```
 
 ### 2. Initialize Convex
@@ -43,7 +43,7 @@ Keep this running in a terminal.
 
 ### 3. Configure MCP Server
 
-Create `.env` in the `mcp-server/` directory:
+Create `.env` in the `server/` directory:
 
 ```bash
 CONVEX_URL=<your-convex-deployment-url>
@@ -55,7 +55,7 @@ Find your deployment URL in the Convex dashboard or in `.env.local` after runnin
 ### 4. Run MCP Server
 
 ```bash
-bun run dev:mcp
+bun run dev:server
 ```
 
 The server will start on `http://localhost:3000` with:
@@ -72,7 +72,7 @@ The MCP server requires OAuth authentication. Choose a provider and configure it
 1. Create a project at [propelauth.com](https://propelauth.com)
 2. Go to **OAuth Config** → create an OAuth client
    - Note the **Client ID** and add your redirect URI
-3. Add to `mcp-server/.env`:
+3. Add to `server/.env`:
    ```bash
    MCP_AUTH_PROVIDER=propelauth
    PROPELAUTH_AUTH_URL=https://auth.yourproject.propelauthtest.com
@@ -84,7 +84,7 @@ The MCP server requires OAuth authentication. Choose a provider and configure it
 2. Create an **API** (Applications → APIs):
    - Identifier: `https://api.open-crm.example`
 3. Create an **Application** (Machine to Machine for agents, or SPA/Web App for users)
-4. Add to `mcp-server/.env`:
+4. Add to `server/.env`:
    ```bash
    MCP_AUTH_PROVIDER=auth0
    AUTH0_DOMAIN=your-tenant.auth0.com
@@ -95,7 +95,7 @@ The MCP server requires OAuth authentication. Choose a provider and configure it
 
 1. Create an account at [workos.com](https://workos.com)
 2. Go to **Configuration** → **OAuth** → create an application
-3. Add to `mcp-server/.env`:
+3. Add to `server/.env`:
    ```bash
    MCP_AUTH_PROVIDER=workos
    WORKOS_CLIENT_ID=client_01HXXXXXX
@@ -174,7 +174,7 @@ For local development, Claude Code can spawn the server as a subprocess. This re
        "open-crm": {
          "type": "stdio",
          "command": "bun",
-         "args": ["run", "mcp-server/src/stdio.ts"],
+         "args": ["run", "server/src/stdio.ts"],
          "env": {
            "CONVEX_URL": "https://your-deployment.convex.cloud",
            "DEV_USER_EMAIL": "you@example.com",
@@ -340,7 +340,7 @@ Create an action that when a deal stage changes to "won", creates a project and 
 bun run dev
 
 # Terminal 2: MCP server (after Convex is running)
-bun run dev:mcp
+bun run dev:server
 ```
 
 ## Architecture

@@ -2,7 +2,7 @@
  * URL validation utilities for Convex actions
  * Used for runtime SSRF protection when making HTTP requests
  *
- * IMPORTANT: This file is intentionally duplicated with mcp-server/src/lib/validation.ts
+ * IMPORTANT: This file is intentionally duplicated with server/src/lib/validation.ts
  * because Convex backend and MCP server run in separate environments that cannot share code.
  * Any security fixes must be applied to BOTH files. The following functions are synchronized:
  * - normalizeHostname()

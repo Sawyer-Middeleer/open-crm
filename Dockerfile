@@ -3,7 +3,7 @@ WORKDIR /app
 
 # Install dependencies
 FROM base AS deps
-COPY mcp-server/package.json mcp-server/bun.lock ./
+COPY server/package.json server/bun.lock ./
 RUN bun install --frozen-lockfile
 
 # Production image
@@ -14,8 +14,8 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 --ingroup nodejs appuser
 
 COPY --from=deps /app/node_modules ./node_modules
-COPY mcp-server/src ./src
-COPY mcp-server/package.json ./
+COPY server/src ./src
+COPY server/package.json ./
 
 # Change ownership to non-root user
 RUN chown -R appuser:nodejs /app
