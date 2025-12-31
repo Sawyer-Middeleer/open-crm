@@ -1,0 +1,36 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - CONVEX_URL=${CONVEX_URL:?CONVEX_URL is required}
+      # OAuth (optional - configure one provider)
+      - MCP_AUTH_PROVIDER=${MCP_AUTH_PROVIDER:-}
+      - AUTH0_DOMAIN=${AUTH0_DOMAIN:-}
+      - AUTH0_AUDIENCE=${AUTH0_AUDIENCE:-}
+      - OAUTH_ISSUER=${OAUTH_ISSUER:-}
+      - OAUTH_JWKS_URI=${OAUTH_JWKS_URI:-}
+      - OAUTH_AUDIENCE=${OAUTH_AUDIENCE:-}
+      # API Key auth (enabled by default)
+      - API_KEY_AUTH_ENABLED=${API_KEY_AUTH_ENABLED:-true}
+      # Optional settings
+      - MCP_RESOURCE_URI=${MCP_RESOURCE_URI:-}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
+      - SESSION_TTL_MINUTES=${SESSION_TTL_MINUTES:-30}
+      - SESSION_CLEANUP_MINUTES=${SESSION_CLEANUP_MINUTES:-5}
+      - IP_RATE_LIMIT_PER_MINUTE=${IP_RATE_LIMIT_PER_MINUTE:-100}
+      - USER_RATE_LIMIT_PER_MINUTE=${USER_RATE_LIMIT_PER_MINUTE:-300}
+      - DISABLE_AUTO_WORKSPACE=${DISABLE_AUTO_WORKSPACE:-false}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

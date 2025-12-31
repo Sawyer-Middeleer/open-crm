@@ -1,6 +1,58 @@
+# Dependencies
 node_modules
 server/node_modules
+
+# Convex generated files
 convex/_generated
-.env*
+
+# Environment files
+.env
+.env.*
+.env.local
+.env.production
+
+# Git
 .git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Logs
+*.log
+logs
+
+# Test and coverage
+coverage
+.nyc_output
+*.test.ts
+*.spec.ts
+__tests__
+
+# Build artifacts
+dist
+build
+*.tsbuildinfo
+
+# Documentation (not needed in container)
 *.md
+docs
+LICENSE
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# MCP config (contains dev credentials)
+.mcp.json
+
+# Claude config
+.claude
+
+# Misc
+nul
+*.tmp
+*.temp
