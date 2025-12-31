@@ -311,7 +311,14 @@ bun run dev:mcp
 
 ## Architecture
 
-See [CLAUDE.md](./CLAUDE.md) for detailed architecture documentation.
+See [CLAUDE.md](./CLAUDE.md) for detailed architecture documentation including:
+
+- High-level system architecture diagram
+- Authentication flow
+- Record CRUD flow with trigger evaluation
+- Action execution engine
+- Multi-tenancy structure
+- Webhook integration (incoming/outgoing)
 
 ## License
 

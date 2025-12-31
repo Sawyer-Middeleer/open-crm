@@ -325,3 +325,465 @@ Response includes supported scopes, bearer methods, and authorization server hin
 ## Multi-Tenancy
 
 All data is scoped by `workspaceId`. Every table has workspace indexes. Users can belong to multiple workspaces with different roles (owner, admin, member, viewer).
+
+## Architectural Diagrams
+
+### High-Level System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              EXTERNAL CLIENTS                                    │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │
+│  │   Claude    │  │   AI SDR    │  │  Custom     │  │  External Webhooks      │ │
+│  │   Code      │  │   Agent     │  │  MCP Client │  │  (Stripe, Hubspot, etc) │ │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └───────────┬─────────────┘ │
+└─────────┼────────────────┼────────────────┼─────────────────────┼───────────────┘
+          │                │                │                     │
+          │ MCP Protocol   │                │                     │ HTTP POST
+          │ (JSON-RPC)     │                │                     │
+          ▼                ▼                ▼                     ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                         MCP SERVER (Bun Runtime)                                 │
+│  ┌────────────────────────────────────────────────────────────────────────────┐ │
+│  │                        HTTP Layer (mcp-server/src/http.ts)                 │ │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌──────────────┐  ┌──────────────────┐  │ │
+│  │  │ CORS        │  │ Rate        │  │ Session      │  │ RFC 9728         │  │ │
+│  │  │ Middleware  │  │ Limiter     │  │ Management   │  │ Discovery        │  │ │
+│  │  └─────────────┘  └─────────────┘  └──────────────┘  └──────────────────┘  │ │
+│  └────────────────────────────────────────────────────────────────────────────┘ │
+│                                      │                                           │
+│                                      ▼                                           │
+│  ┌────────────────────────────────────────────────────────────────────────────┐ │
+│  │                     Auth Layer (mcp-server/src/auth/)                      │ │
+│  │  ┌──────────────────────────────────────────────────────────────────────┐  │ │
+│  │  │  AuthManager → OAuthStrategy → JWKS Validation → Scope Enforcement   │  │ │
+│  │  └──────────────────────────────────────────────────────────────────────┘  │ │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐    │ │
+│  │  │ Auth0       │  │ WorkOS      │  │ PropelAuth  │  │ Custom OIDC     │    │ │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────────┘    │ │
+│  └────────────────────────────────────────────────────────────────────────────┘ │
+│                                      │                                           │
+│                                      ▼                                           │
+│  ┌────────────────────────────────────────────────────────────────────────────┐ │
+│  │                 MCP Server (mcp-server/src/server.ts)                      │ │
+│  │                          32 Tools in 7 Categories                          │ │
+│  │  ┌────────────┐ ┌──────────┐ ┌────────┐ ┌─────────┐ ┌─────────────────┐   │ │
+│  │  │ Records    │ │ Schema   │ │ Lists  │ │ Actions │ │ Integrations    │   │ │
+│  │  │ (11 tools) │ │ (4)      │ │ (5)    │ │ (4)     │ │ (7 tools)       │   │ │
+│  │  └────────────┘ └──────────┘ └────────┘ └─────────┘ └─────────────────┘   │ │
+│  └────────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       │ Convex HTTP Client
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           CONVEX BACKEND                                         │
+│  ┌────────────────────────────────────────────────────────────────────────────┐ │
+│  │                    Functions (convex/functions/)                           │ │
+│  │  ┌─────────────────────────────────────────────────────────────────────┐   │ │
+│  │  │                         Mutations                                    │   │ │
+│  │  │  records/   objectTypes/   lists/   actions/   integrations/        │   │ │
+│  │  │  mutations  mutations      mutations mutations httpActions           │   │ │
+│  │  └─────────────────────────────────────────────────────────────────────┘   │ │
+│  │  ┌─────────────────────────────────────────────────────────────────────┐   │ │
+│  │  │                          Queries                                     │   │ │
+│  │  │  records/   objectTypes/   lists/   actions/   audit/               │   │ │
+│  │  │  queries    queries        queries  queries    queries              │   │ │
+│  │  └─────────────────────────────────────────────────────────────────────┘   │ │
+│  └────────────────────────────────────────────────────────────────────────────┘ │
+│                                      │                                           │
+│  ┌────────────────────────────────────────────────────────────────────────────┐ │
+│  │                      Shared Libraries (convex/lib/)                        │ │
+│  │  ┌──────────┐ ┌──────────┐ ┌────────────┐ ┌────────────┐ ┌──────────────┐  │ │
+│  │  │ auth.ts  │ │ audit.ts │ │ triggers.ts│ │ action     │ │ interpolation│  │ │
+│  │  │          │ │          │ │            │ │ Context.ts │ │ .ts          │  │ │
+│  │  └──────────┘ └──────────┘ └────────────┘ └────────────┘ └──────────────┘  │ │
+│  └────────────────────────────────────────────────────────────────────────────┘ │
+│                                      │                                           │
+│  ┌────────────────────────────────────────────────────────────────────────────┐ │
+│  │                      Database (convex/schema.ts)                           │ │
+│  │                          16 Tables                                         │ │
+│  │  ┌──────────────────────────────────────────────────────────────────────┐  │ │
+│  │  │ Multi-Tenancy    │ Dynamic Schema    │ Core Data                     │  │ │
+│  │  │ ─────────────    │ ──────────────    │ ─────────                     │  │ │
+│  │  │ • workspaces     │ • objectTypes     │ • records                     │  │ │
+│  │  │ • workspaceMembers│ • attributes      │ • bulkValidationSessions     │  │ │
+│  │  │ • users          │                   │                               │  │ │
+│  │  ├──────────────────────────────────────────────────────────────────────┤  │ │
+│  │  │ Lists            │ Automations       │ Integrations    │ Audit       │  │ │
+│  │  │ ─────            │ ───────────       │ ────────────    │ ─────       │  │ │
+│  │  │ • lists          │ • actions         │ • incomingWebhooks │ • auditLogs │ │
+│  │  │ • listAttributes │ • actionExecutions│ • webhookLogs   │             │  │ │
+│  │  │ • listEntries    │                   │ • httpTemplates │             │  │ │
+│  │  │                  │                   │ • httpRequestLogs│            │  │ │
+│  │  └──────────────────────────────────────────────────────────────────────┘  │ │
+│  └────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                  │
+│  ┌────────────────────────────────────────────────────────────────────────────┐ │
+│  │                     Cron Jobs (convex/crons.ts)                            │ │
+│  │                   Scheduled Action Executor (every minute)                 │ │
+│  └────────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Authentication Flow
+
+```
+┌────────────────┐
+│  MCP Client    │
+│  (AI Agent)    │
+└───────┬────────┘
+        │ Authorization: Bearer <JWT>
+        │ X-Workspace-Id: <optional>
+        ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                              HTTP MIDDLEWARE                                   │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ 1. Extract Bearer token from Authorization header                        │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│                                   │                                            │
+│                                   ▼                                            │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ 2. AuthManager.authenticate()                                            │  │
+│  │    ├─ Try each provider in priority order                                │  │
+│  │    └─ OAuthStrategy.authenticate()                                       │  │
+│  │       ├─ Fetch JWKS from provider endpoint                               │  │
+│  │       ├─ Validate JWT signature (jose library)                           │  │
+│  │       ├─ Verify: issuer, audience, expiration                            │  │
+│  │       └─ Extract claims: sub, email, scope                               │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│                                   │                                            │
+│                                   ▼                                            │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ 3. Resolve Workspace ID                                                  │  │
+│  │    Priority: token.workspace_id → token.org_id → X-Workspace-Id header   │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│                                   │                                            │
+│                                   ▼                                            │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ 4. Get or Create User (Convex mutation)                                  │  │
+│  │    ├─ Query users by [authProvider, authProviderId]                      │  │
+│  │    ├─ If new user & no workspace → auto-create workspace                 │  │
+│  │    └─ Return { userId, workspaceMemberId, role }                         │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│                                   │                                            │
+│                                   ▼                                            │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ 5. Build AuthContext                                                     │  │
+│  │    { userId, email, workspaceId, workspaceMemberId, role, scopes }       │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                             TOOL EXECUTION                                     │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ 6. Check scope requirement                                               │  │
+│  │    ├─ crm:read  → read-only tools                                        │  │
+│  │    ├─ crm:write → read + write tools                                     │  │
+│  │    └─ crm:admin → all tools (including workspace.create)                 │  │
+│  │                                                                          │  │
+│  │    Hierarchy: crm:admin > crm:write > crm:read                           │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│                                   │                                            │
+│                                   ▼                                            │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ 7. Execute Convex function with workspace-scoped query                   │  │
+│  │    └─ All queries include WHERE workspaceId = ctx.workspaceId            │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Record CRUD Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              records.create                                      │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ 1. Validate Auth Context (scope: crm:write)                                     │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ 2. Resolve Object Type by slug                                                  │
+│    └─ Query objectTypes WHERE workspaceId AND slug                              │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ 3. Validate Record Data                                                         │
+│    ├─ Fetch all attributes for object type                                      │
+│    ├─ Check required fields                                                     │
+│    ├─ Validate types (text, number, email, etc.)                                │
+│    └─ Check unique constraints (skip archived records)                          │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ 4. Compute displayName from primaryAttribute                                    │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ 5. Insert Record                                                                │
+│    └─ ctx.db.insert("records", { workspaceId, objectTypeId, data, displayName })│
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                          ┌───────────┴───────────┐
+                          ▼                       ▼
+┌─────────────────────────────────────┐  ┌────────────────────────────────────────┐
+│ 6a. Create Audit Log                │  │ 6b. Evaluate Triggers (async)          │
+│     action: "create"                │  │     ├─ Find actions WHERE              │
+│     afterSnapshot: record data      │  │     │   triggerType = "onCreate"       │
+└─────────────────────────────────────┘  │     │   AND objectTypeId matches       │
+                                         │     ├─ Evaluate conditions             │
+                                         │     └─ ctx.scheduler.runAfter(0,       │
+                                         │        executeInternal)                │
+                                         └────────────────────────────────────────┘
+                          │                       │
+                          └───────────┬───────────┘
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ 7. Return { recordId, record }                                                  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Action Execution Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           TRIGGER SOURCES                                        │
+│                                                                                  │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐                   │
+│  │ Lifecycle       │  │ List Events     │  │ Scheduled       │                   │
+│  │ ─────────       │  │ ───────────     │  │ ─────────       │                   │
+│  │ • onCreate      │  │ • onListAdd     │  │ Cron expression │                   │
+│  │ • onUpdate      │  │ • onListRemove  │  │ (every minute)  │                   │
+│  │ • onDelete      │  │                 │  │                 │                   │
+│  │ • onFieldChange │  │                 │  │                 │                   │
+│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘                   │
+│           │                    │                    │                            │
+│           │ Record mutation    │ List mutation      │ crons.ts                   │
+│           ▼                    ▼                    ▼                            │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐│
+│  │                        evaluateTriggers()                                   ││
+│  │  ├─ Find matching actions by [by_trigger_object] or [by_trigger_list]       ││
+│  │  ├─ Filter: workspaceId, isActive, triggerType                              ││
+│  │  └─ Evaluate conditions against record data                                 ││
+│  └─────────────────────────────────────────────────────────────────────────────┘│
+│                                   │                                              │
+│           Manual trigger          │                                              │
+│           ───────────────         │                                              │
+│  ┌─────────────────┐              │                                              │
+│  │ actions.execute │──────────────┤                                              │
+│  │ MCP tool        │              │                                              │
+│  └─────────────────┘              │                                              │
+└───────────────────────────────────┼──────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                        executeInternal()                                         │
+│                                                                                  │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐│
+│  │ 1. Create actionExecution record                                            ││
+│  │    { actionId, recordId, status: "running", triggeredBy, startedAt }        ││
+│  └─────────────────────────────────────────────────────────────────────────────┘│
+│                                    │                                             │
+│                                    ▼                                             │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐│
+│  │ 2. Initialize StepContext                                                   ││
+│  │    { workspaceId, actorId, record, previousStepOutput, variables }          ││
+│  └─────────────────────────────────────────────────────────────────────────────┘│
+│                                    │                                             │
+│                                    ▼                                             │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐│
+│  │ 3. FOR EACH step IN action.steps:                                           ││
+│  │    ┌─────────────────────────────────────────────────────────────────────┐  ││
+│  │    │ a. Interpolate config                                               │  ││
+│  │    │    {{record.field}} → record.data[field]                            │  ││
+│  │    │    {{previous.output}} → last step result                           │  ││
+│  │    │    {{loopItem}} / {{loopIndex}} → loop context                      │  ││
+│  │    └─────────────────────────────────────────────────────────────────────┘  ││
+│  │                              │                                               ││
+│  │                              ▼                                               ││
+│  │    ┌─────────────────────────────────────────────────────────────────────┐  ││
+│  │    │ b. Execute step by type                                             │  ││
+│  │    │                                                                     │  ││
+│  │    │    FIELD OPS         RECORD OPS        LIST OPS       CONTROL FLOW  │  ││
+│  │    │    ─────────         ──────────        ────────       ────────────  │  ││
+│  │    │    updateField       createRecord      addToList      condition     │  ││
+│  │    │    clearField        deleteRecord      removeFromList loop          │  ││
+│  │    │    copyField         archiveRecord     updateListEntry              │  ││
+│  │    │    transformField    restoreRecord                                  │  ││
+│  │    │    updateRelatedRecord                               EXTERNAL       │  ││
+│  │    │                                                      ────────       │  ││
+│  │    │                                                      sendWebhook    │  ││
+│  │    └─────────────────────────────────────────────────────────────────────┘  ││
+│  │                              │                                               ││
+│  │                              ▼                                               ││
+│  │    ┌─────────────────────────────────────────────────────────────────────┐  ││
+│  │    │ c. Record step result                                               │  ││
+│  │    │    { stepId, status, startedAt, completedAt, input, output, error } │  ││
+│  │    └─────────────────────────────────────────────────────────────────────┘  ││
+│  │                              │                                               ││
+│  │                    ┌─────────┴─────────┐                                     ││
+│  │                    ▼                   ▼                                     ││
+│  │            [success]            [failure]                                    ││
+│  │            Continue to          Break loop                                   ││
+│  │            next step            Mark as failed                               ││
+│  └─────────────────────────────────────────────────────────────────────────────┘│
+│                                    │                                             │
+│                                    ▼                                             │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐│
+│  │ 4. Finalize execution                                                       ││
+│  │    ctx.db.patch(executionId, { status, completedAt, stepResults })          ││
+│  │    createAuditLog({ action: "action_executed", metadata })                  ││
+│  └─────────────────────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Multi-Tenancy Structure
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              WORKSPACE ISOLATION                                 │
+│                                                                                  │
+│  ┌───────────────────────────────────────────────────────────────────────────┐  │
+│  │                            workspace                                       │  │
+│  │                     { name, slug, settings }                               │  │
+│  └───────────────────────────────────────────────────────────────────────────┘  │
+│                                     │                                            │
+│            ┌────────────────────────┼────────────────────────┐                   │
+│            │                        │                        │                   │
+│            ▼                        ▼                        ▼                   │
+│  ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐           │
+│  │ workspaceMembers │    │ objectTypes      │    │ lists            │           │
+│  │ (User → Role)    │    │ (Schema)         │    │ (Relationships)  │           │
+│  │                  │    │                  │    │                  │           │
+│  │ • owner          │    │ • People         │    │ • listAttributes │           │
+│  │ • admin          │    │ • Companies      │    │ • listEntries    │           │
+│  │ • member         │    │ • Deals          │    │                  │           │
+│  │ • viewer         │    │ • Custom...      │    │                  │           │
+│  └──────────────────┘    └────────┬─────────┘    └──────────────────┘           │
+│                                   │                                              │
+│                                   ▼                                              │
+│                        ┌──────────────────┐                                      │
+│                        │ attributes       │                                      │
+│                        │ (16 types)       │                                      │
+│                        │                  │                                      │
+│                        │ text, number,    │                                      │
+│                        │ email, phone,    │                                      │
+│                        │ reference, etc.  │                                      │
+│                        └────────┬─────────┘                                      │
+│                                 │                                                │
+│                                 ▼                                                │
+│  ┌───────────────────────────────────────────────────────────────────────────┐  │
+│  │                           records                                          │  │
+│  │               (All data in single table, keyed by objectTypeId)            │  │
+│  │                                                                            │  │
+│  │   { _id, workspaceId, objectTypeId, data: { [slug]: value }, displayName } │  │
+│  └───────────────────────────────────────────────────────────────────────────┘  │
+│                                     │                                            │
+│            ┌────────────────────────┼────────────────────────┐                   │
+│            │                        │                        │                   │
+│            ▼                        ▼                        ▼                   │
+│  ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐           │
+│  │ actions          │    │ auditLogs        │    │ integrations     │           │
+│  │ (Automations)    │    │ (Immutable)      │    │                  │           │
+│  │                  │    │                  │    │ • webhooks       │           │
+│  │ • actionExec.    │    │ • before/after   │    │ • httpTemplates  │           │
+│  │ • triggers       │    │ • actor          │    │ • logs           │           │
+│  │ • steps          │    │ • timestamp      │    │                  │           │
+│  └──────────────────┘    └──────────────────┘    └──────────────────┘           │
+│                                                                                  │
+│  ┌───────────────────────────────────────────────────────────────────────────┐  │
+│  │                    EVERY TABLE HAS:                                        │  │
+│  │    • workspaceId field                                                     │  │
+│  │    • Index: by_workspace or by_workspace_*                                 │  │
+│  │    • All queries filtered by authenticated workspaceId                     │  │
+│  └───────────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Webhook Integration Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                        INCOMING WEBHOOKS                                         │
+│                                                                                  │
+│  External Service (Stripe, etc.)                                                 │
+│           │                                                                      │
+│           │ POST /webhooks/{workspaceId}/{slug}                                  │
+│           │ X-Webhook-Signature: <hmac>                                          │
+│           │ Body: { ...payload }                                                 │
+│           ▼                                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐│
+│  │ convex/http.ts                                                              ││
+│  │  ├─ Lookup webhook by [workspaceId, slug]                                   ││
+│  │  ├─ Verify HMAC signature (if configured)                                   ││
+│  │  └─ Check webhook.isActive                                                  ││
+│  └─────────────────────────────────────────────────────────────────────────────┘│
+│                          │                                                       │
+│              ┌───────────┴───────────┐                                           │
+│              ▼                       ▼                                           │
+│  ┌────────────────────┐  ┌────────────────────┐                                  │
+│  │ handler:           │  │ handler:           │                                  │
+│  │ createRecord       │  │ triggerAction      │                                  │
+│  │                    │  │                    │                                  │
+│  │ Use fieldMapping   │  │ Execute action     │                                  │
+│  │ to map payload     │  │ with recordId      │                                  │
+│  │ to record fields   │  │ from payload       │                                  │
+│  │                    │  │                    │                                  │
+│  │ → records.create() │  │ → executeInternal()│                                  │
+│  └────────────────────┘  └────────────────────┘                                  │
+│                          │                                                       │
+│                          ▼                                                       │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐│
+│  │ webhookLogs                                                                 ││
+│  │  { webhookId, receivedAt, payload, status, createdRecordId, ... }           ││
+│  └─────────────────────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                        OUTGOING HTTP REQUESTS                                    │
+│                                                                                  │
+│  Action step: sendWebhook                                                        │
+│           │                                                                      │
+│           ▼                                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐│
+│  │ integrations/httpActions.ts                                                 ││
+│  │  ├─ Validate URL (SSRF protection)                                          ││
+│  │  │   └─ Block: localhost, private IPs (10.x, 172.16.x, 192.168.x)           ││
+│  │  ├─ Resolve template (if templateSlug provided)                             ││
+│  │  ├─ Interpolate variables: {{record.field}}, {{previous.output}}            ││
+│  │  ├─ Build auth header (bearer/basic/apiKey from env vars)                   ││
+│  │  └─ ctx.scheduler.runAfter(0, sendHttpRequest)                              ││
+│  └─────────────────────────────────────────────────────────────────────────────┘│
+│                          │                                                       │
+│                          ▼                                                       │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐│
+│  │ httpRequestLogs                                                             ││
+│  │  { templateId, method, url, statusCode, durationMs, sentAt, completedAt }   ││
+│  └─────────────────────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Key File Reference
+
+| Layer | Purpose | Path |
+|-------|---------|------|
+| **Entry** | HTTP server | `mcp-server/src/http.ts` |
+| **Entry** | MCP tool definitions | `mcp-server/src/server.ts` |
+| **Auth** | OAuth strategy | `mcp-server/src/auth/strategies/oauth.ts` |
+| **Auth** | Scope enforcement | `mcp-server/src/auth/scopes.ts` |
+| **Schema** | Database tables | `convex/schema.ts` |
+| **Records** | CRUD mutations | `convex/functions/records/mutations.ts` |
+| **Actions** | Execution engine | `convex/functions/actions/mutations.ts` |
+| **Triggers** | Event evaluation | `convex/lib/triggers.ts` |
+| **Context** | Variable interpolation | `convex/lib/actionContext.ts` |
+| **Audit** | Change logging | `convex/lib/audit.ts` |
+| **Webhooks** | HTTP handlers | `convex/http.ts` |
