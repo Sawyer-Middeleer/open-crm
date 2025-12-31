@@ -1,5 +1,5 @@
 /**
- * OAuth 2.1 Coarse-Grained Scopes for Agent CRM
+ * OAuth 2.1 Coarse-Grained Scopes for Open CRM
  *
  * Scope hierarchy: crm:admin > crm:write > crm:read
  * - crm:read: Read-only access to all CRM data

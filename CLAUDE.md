@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Agent CRM is a headless, MCP-first CRM built with Convex and Bun. The intended users are startups and agencies that use agentic systems (such as claude code or dedicated "AI SDRs") extensively in their work. Agent CRM is designed to be used by AI agents as first-class users. This project is pre-release.
+Open CRM is a headless, MCP-first CRM built with Convex and Bun. The intended users are startups and agencies that use agentic systems (such as claude code or dedicated "AI SDRs") extensively in their work. Open CRM is designed to be used by AI agents as first-class users. This project is pre-release.
 
 ## Commands
 
@@ -204,7 +204,7 @@ CONVEX_URL=https://your-deployment.convex.cloud
 
 Optional:
 ```bash
-MCP_RESOURCE_URI=https://api.agent-crm.example/mcp  # For OAuth protected resource metadata
+MCP_RESOURCE_URI=https://api.open-crm.example/mcp  # For OAuth protected resource metadata
 PORT=3000                                           # HTTP server port
 HOSTNAME=0.0.0.0                                    # HTTP server hostname
 CORS_ALLOWED_ORIGINS=https://app.example.com        # Comma-separated allowed origins
@@ -272,8 +272,8 @@ WORKOS_CLIENT_ID=client_01HXXXXXX
 **Dashboard Setup** ([auth0.com/docs](https://auth0.com/docs)):
 1. Create an Auth0 tenant at [auth0.com](https://auth0.com)
 2. Go to **Applications** → **APIs** → **Create API**:
-   - Name: `Agent CRM API`
-   - Identifier (audience): `https://api.agent-crm.example` (your choice)
+   - Name: `Open CRM API`
+   - Identifier (audience): `https://api.open-crm.example` (your choice)
    - Signing algorithm: RS256
 3. Go to **Applications** → **Applications** → **Create Application**:
    - For interactive users: **Regular Web Application** or **Single Page Application**
@@ -286,7 +286,7 @@ WORKOS_CLIENT_ID=client_01HXXXXXX
 ```bash
 MCP_AUTH_PROVIDER=auth0
 AUTH0_DOMAIN=your-tenant.auth0.com
-AUTH0_AUDIENCE=https://api.agent-crm.example  # Must match API identifier
+AUTH0_AUDIENCE=https://api.open-crm.example  # Must match API identifier
 ```
 
 **M2M token request** (for agents):
@@ -296,7 +296,7 @@ curl -X POST "https://your-tenant.auth0.com/oauth/token" \
   -d '{
     "client_id": "YOUR_CLIENT_ID",
     "client_secret": "YOUR_CLIENT_SECRET",
-    "audience": "https://api.agent-crm.example",
+    "audience": "https://api.open-crm.example",
     "grant_type": "client_credentials",
     "scope": "crm:write"
   }'
@@ -311,7 +311,7 @@ For any OAuth provider that supports OIDC/JWKS:
 MCP_AUTH_PROVIDER=custom
 OAUTH_ISSUER=https://your-idp.com
 OAUTH_JWKS_URI=https://your-idp.com/.well-known/jwks.json
-OAUTH_AUDIENCE=https://api.agent-crm.example  # Optional
+OAUTH_AUDIENCE=https://api.open-crm.example  # Optional
 ```
 
 The MCP server will validate tokens using the JWKS endpoint and verify the issuer claim.
@@ -326,7 +326,7 @@ X-Workspace-Id: <workspace_id>    # Optional if token contains workspace claim
 ### Workspace ID
 
 The workspace ID can be provided via:
-1. **Token claim** (for M2M clients): `workspace_id`, `org_id` (PropelAuth), or `https://agent-crm/workspace_id`
+1. **Token claim** (for M2M clients): `workspace_id`, `org_id` (PropelAuth), or `https://open-crm/workspace_id`
 2. **Header** (for interactive users): `X-Workspace-Id`
 
 Token claims take precedence over headers.

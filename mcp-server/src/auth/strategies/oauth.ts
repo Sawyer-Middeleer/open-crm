@@ -142,7 +142,7 @@ export class OAuthStrategy implements AuthProvider {
     const claimWorkspaceId =
       (claims.workspace_id as string) ??
       (claims.org_id as string) ?? // PropelAuth uses org_id
-      (claims["https://agent-crm/workspace_id"] as string);
+      (claims["https://open-crm/workspace_id"] as string);
 
     if (claimWorkspaceId) {
       return claimWorkspaceId;

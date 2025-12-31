@@ -46,7 +46,7 @@ function startTestServer() {
       if (url.pathname === "/.well-known/oauth-protected-resource") {
         return new Response(
           JSON.stringify({
-            resource: "https://api.agent-crm.example/mcp",
+            resource: "https://api.open-crm.example/mcp",
             bearer_methods_supported: ["header"],
           }),
           {

@@ -27,7 +27,7 @@ curl http://localhost:3000/.well-known/oauth-protected-resource
 Expected:
 ```json
 {
-  "resource": "https://api.agent-crm.example/mcp",
+  "resource": "https://api.open-crm.example/mcp",
   "bearer_methods_supported": ["header"],
   "resource_signing_alg_values_supported": ["RS256", "ES256"]
 }

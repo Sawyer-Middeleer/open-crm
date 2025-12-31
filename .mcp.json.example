@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "agent-crm": {
+    "open-crm": {
       "type": "stdio",
       "command": "bun",
       "args": ["run", "mcp-server/src/stdio.ts"],

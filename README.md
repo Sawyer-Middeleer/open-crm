@@ -1,4 +1,4 @@
-# Agent CRM
+# Open CRM
 
 A headless, MCP-first CRM
 
@@ -82,13 +82,13 @@ The MCP server requires OAuth authentication. Choose a provider and configure it
 
 1. Create a tenant at [auth0.com](https://auth0.com)
 2. Create an **API** (Applications → APIs):
-   - Identifier: `https://api.agent-crm.example`
+   - Identifier: `https://api.open-crm.example`
 3. Create an **Application** (Machine to Machine for agents, or SPA/Web App for users)
 4. Add to `mcp-server/.env`:
    ```bash
    MCP_AUTH_PROVIDER=auth0
    AUTH0_DOMAIN=your-tenant.auth0.com
-   AUTH0_AUDIENCE=https://api.agent-crm.example
+   AUTH0_AUDIENCE=https://api.open-crm.example
    ```
 
 #### Option C: WorkOS
@@ -107,7 +107,7 @@ The MCP server requires OAuth authentication. Choose a provider and configure it
 MCP_AUTH_PROVIDER=custom
 OAUTH_ISSUER=https://your-idp.com
 OAUTH_JWKS_URI=https://your-idp.com/.well-known/jwks.json
-OAUTH_AUDIENCE=https://api.agent-crm.example  # Optional
+OAUTH_AUDIENCE=https://api.open-crm.example  # Optional
 ```
 
 ### 6. First Login
@@ -171,7 +171,7 @@ For local development, Claude Code can spawn the server as a subprocess. This re
    ```json
    {
      "mcpServers": {
-       "agent-crm": {
+       "open-crm": {
          "type": "stdio",
          "command": "bun",
          "args": ["run", "mcp-server/src/stdio.ts"],

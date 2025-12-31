@@ -48,10 +48,10 @@ export function createRestApi(deps: RestApiDependencies) {
   app.doc("/openapi.json", {
     openapi: "3.1.0",
     info: {
-      title: "Agent CRM REST API",
+      title: "Open CRM REST API",
       version: "1.0.0",
       description:
-        "RESTful API for Agent CRM - a headless, MCP-first CRM built for AI agents and traditional applications.",
+        "RESTful API for Open CRM - a headless, MCP-first CRM built for AI agents and traditional applications.",
     },
     servers: [
       {

@@ -22,7 +22,7 @@ export function buildWwwAuthenticateHeader(
   errorDescription?: string,
   requiredScope?: string
 ): string {
-  const params: string[] = ['realm="Agent CRM"'];
+  const params: string[] = ['realm="Open CRM"'];
 
   if (resourceUri) {
     params.push(

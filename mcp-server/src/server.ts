@@ -119,7 +119,7 @@ function jsonResponse(data: unknown) {
 
 export function createServer() {
   const server = new McpServer({
-    name: "agent-crm",
+    name: "open-crm",
     version: "0.1.0",
   });
 
