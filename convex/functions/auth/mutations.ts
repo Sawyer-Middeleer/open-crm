@@ -146,10 +146,21 @@ export const upsertFromOAuthWithWorkspace = mutation({
       .withIndex("by_user", (q) => q.eq("userId", userId as any))
       .collect();
 
-    // If user has workspaces, return without creating a new one
+    // If user has workspaces, return the first one (or preferred default)
     if (memberships.length > 0) {
+      // Get user to check for preferred workspace
+      const user = await ctx.db.get(userId as any);
+      const preferredWorkspaceId = user?.preferences?.defaultWorkspaceId;
+
+      // Find preferred membership or use first one
+      const membership = preferredWorkspaceId
+        ? memberships.find(m => m.workspaceId === preferredWorkspaceId) ?? memberships[0]
+        : memberships[0];
+
       return {
         userId,
+        workspaceId: membership.workspaceId,
+        workspaceMemberId: membership._id,
         isNewUser,
         isNewWorkspace: false,
       };
