@@ -11,9 +11,16 @@ export interface OAuthConfig {
   audience?: string;
 }
 
+export interface ApiKeyConfig {
+  enabled: boolean;
+}
+
 export interface AuthConfig {
   // OAuth provider configuration
   oauth?: OAuthConfig;
+
+  // API Key configuration
+  apiKey?: ApiKeyConfig;
 
   // Resource server URI for OAuth metadata
   resourceUri?: string;
@@ -41,6 +48,12 @@ export function loadAuthConfig(): AuthConfig {
     // Default to true unless explicitly disabled
     autoCreateWorkspace: process.env.DISABLE_AUTO_WORKSPACE !== "true",
   };
+
+  // API Key authentication (enabled by default)
+  const apiKeyEnabled = process.env.API_KEY_AUTH_ENABLED !== "false";
+  if (apiKeyEnabled) {
+    config.apiKey = { enabled: true };
+  }
 
   // Determine OAuth provider from environment
   const provider = process.env.MCP_AUTH_PROVIDER as AuthProviderType | undefined;

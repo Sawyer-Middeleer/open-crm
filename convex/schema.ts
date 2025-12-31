@@ -23,6 +23,27 @@ const users = defineTable({
   .index("by_email", ["email"]);
 
 // ============================================================================
+// API KEYS
+// ============================================================================
+
+const apiKeys = defineTable({
+  userId: v.id("users"),
+  workspaceId: v.id("workspaces"), // Scoped to specific workspace
+  name: v.string(), // "CI/CD Key", "Agent Key"
+  keyHash: v.string(), // SHA-256 hash (never store raw key)
+  keyPrefix: v.string(), // First 8 chars for identification (e.g., "ocrm_liv")
+  scopes: v.array(v.string()), // ["crm:read", "crm:write", "crm:admin"]
+  isRevoked: v.boolean(),
+  expiresAt: v.optional(v.number()), // Optional expiration timestamp
+  lastUsedAt: v.optional(v.number()),
+  createdAt: v.number(),
+})
+  .index("by_key_hash", ["keyHash"])
+  .index("by_user", ["userId"])
+  .index("by_workspace", ["workspaceId"])
+  .index("by_user_workspace", ["userId", "workspaceId"]);
+
+// ============================================================================
 // MULTI-TENANCY
 // ============================================================================
 
@@ -650,6 +671,7 @@ const httpRequestLogs = defineTable({
 export default defineSchema({
   // Users & Authentication
   users,
+  apiKeys,
 
   // Multi-tenancy
   workspaces,

@@ -4,10 +4,11 @@ import {
   createAuth0Provider,
   createCustomProvider,
 } from "./providers/index.js";
+import { ApiKeyStrategy } from "./strategies/apikey.js";
 import type { AuthProvider } from "./types.js";
 
 /**
- * Create AuthManager with OAuth providers based on configuration
+ * Create AuthManager with auth providers based on configuration
  */
 export function createAuthManager(config?: AuthConfig): AuthManager {
   const resolvedConfig = config ?? loadAuthConfig();
@@ -24,9 +25,16 @@ export function createAuthManager(config?: AuthConfig): AuthManager {
     }
   }
 
+  // Add API Key provider if enabled
+  if (resolvedConfig.apiKey?.enabled) {
+    providers.push(
+      new ApiKeyStrategy({ convexUrl: resolvedConfig.convexUrl })
+    );
+  }
+
   if (providers.length === 0) {
     throw new Error(
-      "No OAuth provider configured. Set MCP_AUTH_PROVIDER environment variable to 'auth0' or 'custom'."
+      "No auth provider configured. Set MCP_AUTH_PROVIDER environment variable or enable API key auth."
     );
   }
 

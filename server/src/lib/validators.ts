@@ -67,3 +67,7 @@ export function validateOptionalWorkspaceId(
 export function validateActionId(id: string): void {
   validateConvexId(id, "actionId");
 }
+
+export function validateApiKeyId(id: string): void {
+  validateConvexId(id, "apiKeyId");
+}

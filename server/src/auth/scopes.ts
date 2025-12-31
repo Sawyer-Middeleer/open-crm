@@ -72,6 +72,9 @@ const ADMIN_TOOLS = [
   "workspace.create",
   "workspace.updateMember",
   "workspace.removeMember",
+  "apiKeys.create",
+  "apiKeys.list",
+  "apiKeys.revoke",
 ];
 
 /**

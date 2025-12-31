@@ -17,55 +17,94 @@ A headless, MCP-first CRM
 - [Bun](https://bun.sh) v1.0+
 - [Convex](https://convex.dev) account (free tier available)
 
-## Setup
+## Quick Start
 
-### 1. Install Dependencies
+Get up and running in 2 minutes:
+
+```bash
+# 1. Install dependencies
+bun install
+cd server && bun install && cd ..
+
+# 2. Initialize Convex (keep running in terminal)
+bunx convex dev
+
+# 3. Run setup wizard (in new terminal)
+cd server && bun run setup
+
+# 4. Start the server
+bun run dev:server
+
+# 5. Test your API key
+curl -H 'X-API-Key: ocrm_live_...' http://localhost:3000/api/v1/users/me
+```
+
+The setup wizard will:
+- Create your admin user and workspace
+- Generate an API key for REST API access
+- Configure `.mcp.json` for Claude Code (stdio transport)
+- Optionally set up OAuth for remote MCP access
+
+**That's it!** You now have:
+- **REST API**: `http://localhost:3000/api/v1`
+- **API Docs**: `http://localhost:3000/api/v1/docs`
+- **MCP endpoint**: `http://localhost:3000/mcp`
+
+## Setup Details
+
+### Step 1: Install Dependencies
 
 ```bash
 bun install
 cd server && bun install && cd ..
 ```
 
-### 2. Initialize Convex
+### Step 2: Initialize Convex
 
 ```bash
 bunx convex dev
 ```
 
-This will:
-- Prompt you to log in (GitHub auth)
-- Create a new Convex project
-- Deploy the schema
-- Generate TypeScript types
-- Start the dev server
+This will prompt you to log in (GitHub auth), create a Convex project, and start the dev server.
 
-Keep this running in a terminal.
+**Keep this running in a terminal.**
 
-### 3. Configure MCP Server
-
-Create `.env` in the `server/` directory:
+### Step 3: Run Setup Wizard
 
 ```bash
-CONVEX_URL=<your-convex-deployment-url>
-PORT=3000  # optional, defaults to 3000
+cd server && bun run setup
 ```
 
-Find your deployment URL in the Convex dashboard or in `.env.local` after running `convex dev`.
+The wizard guides you through:
+1. Creating an admin user (email)
+2. Creating a default workspace
+3. Generating an API key
+4. Configuring local MCP access
+5. (Optional) Setting up OAuth for remote access
 
-### 4. Run MCP Server
+**Save the API key shown during setup** - it cannot be retrieved again.
+
+### Step 4: Start the Server
 
 ```bash
 bun run dev:server
 ```
 
-The server will start on `http://localhost:3000` with:
+The server starts on `http://localhost:3000` with:
 - **MCP endpoint**: `http://localhost:3000/mcp`
 - **REST API**: `http://localhost:3000/api/v1`
 - **API Docs**: `http://localhost:3000/api/v1/docs`
 
-### 5. Configure Authentication
+### Step 5: Configure OAuth (Optional)
 
-The MCP server requires OAuth 2.1 authentication. Choose a provider and configure it:
+OAuth is required for:
+- Remote MCP access (Claude Code over HTTP)
+- Multi-user authentication
+
+Run the OAuth setup:
+```bash
+cd server && bun run setup:oauth
+```
 
 #### Option A: Auth0 (Recommended)
 
@@ -75,27 +114,15 @@ The MCP server requires OAuth 2.1 authentication. Choose a provider and configur
 3. Create an **Application** (Machine to Machine for agents, or SPA/Web App for users)
 4. **Enable Dynamic Client Registration** (required for MCP clients like Claude Code):
    - Go to Settings → Advanced → enable "OIDC Conformant" and DCR
-5. Add to `server/.env`:
-   ```bash
-   MCP_AUTH_PROVIDER=auth0
-   AUTH0_DOMAIN=your-tenant.auth0.com
-   AUTH0_AUDIENCE=https://api.open-crm.example
-   ```
+5. Enter your Auth0 domain and audience when prompted
 
 #### Option B: Custom OIDC Provider
 
-Any OIDC-compliant provider that supports Dynamic Client Registration (RFC 7591):
+Any OIDC-compliant provider that supports Dynamic Client Registration (RFC 7591).
 
-```bash
-MCP_AUTH_PROVIDER=custom
-OAUTH_ISSUER=https://your-idp.com
-OAUTH_JWKS_URI=https://your-idp.com/.well-known/jwks.json
-OAUTH_AUDIENCE=https://api.open-crm.example  # Optional
-```
+> **Note**: MCP clients like Claude Code require DCR support for automatic OAuth registration. Without DCR, use API keys for the REST API or stdio transport for local MCP.
 
-> **Note on MCP Client Compatibility**: MCP clients like Claude Code require your OAuth provider to support [Dynamic Client Registration (RFC 7591)](https://datatracker.ietf.org/doc/html/rfc7591). This allows AI agents to register themselves as OAuth clients automatically. Providers without DCR support will only work with the REST API or stdio transport.
-
-### 6. First Login
+### First Login (OAuth users)
 
 When you authenticate for the first time:
 - A **user record** is automatically created from your OAuth token
@@ -106,9 +133,10 @@ No manual user or workspace creation required!
 
 ## Authentication
 
-The MCP server uses OAuth 2.1 (RFC 9728 compliant). It validates JWT tokens issued by your OAuth provider.
+The server supports two authentication methods:
 
-**Request format:**
+### Option 1: OAuth 2.1 (for interactive users)
+
 ```bash
 curl -X POST http://localhost:3000/mcp \
   -H "Content-Type: application/json" \
@@ -116,12 +144,33 @@ curl -X POST http://localhost:3000/mcp \
   -d '{"jsonrpc": "2.0", ...}'
 ```
 
-**Notes:**
-- `X-Workspace-Id` header is optional for new users (workspace auto-created)
-- Existing users with multiple workspaces must specify `X-Workspace-Id`
-- M2M tokens can include `workspace_id` claim to skip the header
+### Option 2: API Keys (for agents and integrations)
 
-See [CLAUDE.md](./CLAUDE.md) for detailed OAuth provider setup instructions.
+API keys provide simpler auth for server-to-server integrations, CI/CD, and AI agents.
+
+1. Create a key via MCP or REST (requires OAuth auth initially):
+   ```bash
+   curl -X POST http://localhost:3000/api/v1/api-keys \
+     -H "Authorization: Bearer <oauth_token>" \
+     -H "Content-Type: application/json" \
+     -d '{"name": "Agent Key", "scopes": ["crm:write"]}'
+   ```
+
+2. Use the key in subsequent requests:
+   ```bash
+   curl http://localhost:3000/api/v1/users/me \
+     -H "X-API-Key: ocrm_live_..."
+   ```
+
+**Key format:** `ocrm_live_<32 alphanumeric chars>`
+
+**Notes:**
+- Keys are workspace-scoped and inherit specified permissions
+- Raw key shown only once at creation - store it securely
+- Keys can have optional expiration dates
+- Revoke keys immediately via `apiKeys.revoke`
+
+See [CLAUDE.md](./CLAUDE.md) for detailed authentication setup instructions.
 
 ## Using with Claude Code
 
@@ -253,13 +302,22 @@ The server exposes a standard MCP HTTP endpoint at `/mcp`. Connect using any MCP
 |------|-------------|
 | `audit.getHistory` | Get change history for a record |
 
+### API Keys
+| Tool | Description |
+|------|-------------|
+| `apiKeys.create` | Create a new API key (returns raw key once) |
+| `apiKeys.list` | List API keys for current workspace |
+| `apiKeys.revoke` | Revoke an API key |
+
 ## REST API
 
 A RESTful HTTP API runs at `/api/v1` with full parity to the MCP tools. Use this for traditional integrations, webhooks, or any HTTP client.
 
 **Documentation**: Visit `/api/v1/docs` for interactive Swagger UI, or `/api/v1/openapi.json` for the OpenAPI spec.
 
-**Authentication**: Same OAuth 2.1 as MCP - include `Authorization: Bearer <token>` header.
+**Authentication**: OAuth 2.1 or API Key:
+- OAuth: `Authorization: Bearer <token>`
+- API Key: `X-API-Key: ocrm_live_...`
 
 **Example**:
 ```bash
@@ -333,9 +391,9 @@ bun run dev:server
 See [CLAUDE.md](./CLAUDE.md) for detailed architecture documentation including:
 
 - Directory structure and core concepts
-- MCP tools reference (41 tools)
-- REST API reference (41 endpoints)
-- Authentication flow (OAuth 2.1)
+- MCP tools reference (44 tools)
+- REST API reference (44 endpoints)
+- Authentication flow (OAuth 2.1 + API Keys)
 - Multi-tenancy structure
 - Environment variables
 

@@ -14,6 +14,7 @@ import { createActionsRoutes } from "./routes/actions.js";
 import { createIntegrationsRoutes } from "./routes/integrations.js";
 import { createUsersRoutes } from "./routes/users.js";
 import { createWorkspacesRoutes } from "./routes/workspaces.js";
+import { createApiKeysRoutes } from "./routes/apiKeys.js";
 
 /**
  * Dependencies required by the REST API
@@ -43,6 +44,7 @@ export function createRestApi(deps: RestApiDependencies) {
   app.route("/integrations", createIntegrationsRoutes(deps));
   app.route("/users", createUsersRoutes(deps));
   app.route("/workspaces", createWorkspacesRoutes(deps));
+  app.route("/api-keys", createApiKeysRoutes(deps));
 
   // OpenAPI spec endpoint
   app.doc("/openapi.json", {
@@ -70,12 +72,19 @@ export function createRestApi(deps: RestApiDependencies) {
     })
   );
 
-  // Register security scheme for OpenAPI
+  // Register security schemes for OpenAPI
   app.openAPIRegistry.registerComponent("securitySchemes", "Bearer", {
     type: "http",
     scheme: "bearer",
     bearerFormat: "JWT",
     description: "OAuth 2.0 Bearer token. Include scopes: crm:read, crm:write, or crm:admin.",
+  });
+
+  app.openAPIRegistry.registerComponent("securitySchemes", "ApiKey", {
+    type: "apiKey",
+    in: "header",
+    name: "X-API-Key",
+    description: "API Key authentication. Format: ocrm_live_<key>",
   });
 
   return app;

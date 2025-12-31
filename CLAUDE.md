@@ -11,6 +11,7 @@ Open CRM is a headless, MCP-first CRM built with Convex and Bun. The intended us
 ```bash
 # First-time setup (requires Convex account)
 bunx convex dev          # Sets up Convex deployment and starts dev server
+cd server && bun run setup  # Creates admin user, workspace, and API key
 
 # Development
 bun run dev              # Runs Convex dev server
@@ -18,6 +19,43 @@ bun run dev:mcp          # Runs HTTP MCP server on port 3000
 
 # Production
 bun run build            # Deploys to Convex production
+```
+
+## Quick Start (First-Time Setup)
+
+1. **Deploy Convex backend**:
+   ```bash
+   bunx convex dev
+   ```
+   Keep this running in a terminal.
+
+2. **Run the setup wizard** (in another terminal):
+   ```bash
+   cd server && bun run setup
+   ```
+   This will:
+   - Create an admin user with your email
+   - Create a default workspace with People, Companies, Deals
+   - Generate an API key for REST API access
+   - Configure `.mcp.json` for Claude Code (stdio transport)
+   - Optionally configure OAuth for remote MCP access
+
+3. **Start the server**:
+   ```bash
+   bun run dev:server
+   ```
+
+4. **Test your API key**:
+   ```bash
+   curl -H 'X-API-Key: ocrm_live_...' http://localhost:3000/api/v1/users/me
+   ```
+
+### CLI Commands
+
+```bash
+cd server
+bun run setup           # First-time setup wizard
+bun run setup:oauth     # Configure OAuth provider (for remote MCP)
 ```
 
 ## Architecture
@@ -68,14 +106,15 @@ bun run build            # Deploys to Convex production
 │       │   ├── rateLimiter.ts  # IP and user rate limiting
 │       │   ├── validation.ts   # URL/SSRF validation
 │       │   └── validators.ts   # Input validators
-│       ├── auth/               # OAuth 2.1 Authentication
+│       ├── auth/               # Authentication (OAuth 2.1 + API Keys)
 │       │   ├── types.ts        # AuthContext, AuthProvider interfaces
 │       │   ├── manager.ts      # AuthManager orchestration
 │       │   ├── config.ts       # Environment-based configuration
 │       │   ├── scopes.ts       # Scope definitions and checking
 │       │   ├── errors.ts       # RFC 6750 compliant error responses
 │       │   ├── strategies/     # Auth strategies
-│       │   │   └── oauth.ts    # Bearer token + JWKS validation
+│       │   │   ├── oauth.ts    # Bearer token + JWKS validation
+│       │   │   └── apikey.ts   # API key authentication
 │       │   └── providers/      # OAuth provider configs
 │       │       ├── auth0.ts
 │       │       └── custom.ts
@@ -114,7 +153,7 @@ Step types:
 
 Variable interpolation: `{{record.field}}`, `{{previous.output}}`, `{{loopItem}}`, `{{loopIndex}}`
 
-### MCP Tools (41 total)
+### MCP Tools (44 total)
 
 Record operations (14):
 - `records.create`, `records.get`, `records.list`, `records.update`, `records.delete`
@@ -153,7 +192,12 @@ Users (2):
 Audit (1):
 - `audit.getHistory`
 
-### REST API (41 endpoints)
+API Keys (3):
+- `apiKeys.create` - Create new API key (returns raw key once)
+- `apiKeys.list` - List API keys for current workspace
+- `apiKeys.revoke` - Revoke an API key
+
+### REST API (44 endpoints)
 
 A RESTful HTTP API runs parallel to the MCP server at `/api/v1`, providing the same functionality for traditional integrations.
 
@@ -174,8 +218,11 @@ A RESTful HTTP API runs parallel to the MCP server at `/api/v1`, providing the s
 | `/integrations` | 7 | Webhooks and HTTP templates |
 | `/users` | 2 | Current user and preferences |
 | `/workspaces` | 3 | Workspace and member management |
+| `/api-keys` | 3 | API key management (create, list, revoke) |
 
-**Authentication**: Same OAuth 2.1 as MCP. Include JWT in `Authorization: Bearer <token>` header.
+**Authentication**: OAuth 2.1 Bearer token or API Key.
+- OAuth: `Authorization: Bearer <jwt>`
+- API Key: `X-API-Key: ocrm_live_<key>`
 
 **Scopes**:
 | Scope | Access |
@@ -217,6 +264,9 @@ USER_RATE_LIMIT_PER_MINUTE=300                      # Per-user limit (default: 3
 
 # Onboarding
 DISABLE_AUTO_WORKSPACE=true                         # Disable auto-workspace creation (default: false)
+
+# API Key Authentication
+API_KEY_AUTH_ENABLED=false                          # Disable API key auth (default: true/enabled)
 ```
 
 ## Authentication (OAuth 2.1)
@@ -345,6 +395,54 @@ Response includes supported scopes, bearer methods, and authorization server hin
 - **401 Unauthorized**: Missing or invalid token. Includes `WWW-Authenticate` header with `error="invalid_token"`.
 - **403 Forbidden (insufficient_scope)**: Valid token but missing required scope. Includes `scope` parameter in `WWW-Authenticate`.
 - **403 Forbidden**: Workspace access denied.
+
+## API Key Authentication
+
+API keys provide a simpler alternative to OAuth for server-to-server integrations, CI/CD pipelines, and AI agents.
+
+### Key Format
+```
+ocrm_live_<32 random alphanumeric characters>
+```
+
+Example: `ocrm_live_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6`
+
+### Creating API Keys
+
+Via MCP:
+```json
+{"tool": "apiKeys.create", "arguments": {"name": "CI/CD Key", "scopes": ["crm:write"]}}
+```
+
+Via REST:
+```bash
+curl -X POST https://your-server/api/v1/api-keys \
+  -H "Authorization: Bearer <oauth_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Agent Key", "scopes": ["crm:write"], "expiresInDays": 90}'
+```
+
+**Important**: The raw key is returned only once at creation. Store it securely.
+
+### Using API Keys
+
+Include the `X-API-Key` header in requests:
+```bash
+curl https://your-server/api/v1/users/me \
+  -H "X-API-Key: ocrm_live_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6"
+```
+
+### Key Properties
+- **Workspace-scoped**: Each key is tied to a specific workspace
+- **Scopes**: Keys inherit permissions from specified scopes (`crm:read`, `crm:write`, `crm:admin`)
+- **Expiration**: Optional expiration date
+- **Revocable**: Keys can be revoked immediately via `apiKeys.revoke`
+- **Secure storage**: Only SHA-256 hash stored in database
+
+### Security
+- API key auth is enabled by default. Disable with `API_KEY_AUTH_ENABLED=false`
+- Only workspace owners and admins can create API keys
+- Keys are validated on every request (revocation takes effect immediately)
 
 ## Multi-Tenancy
 

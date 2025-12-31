@@ -13,7 +13,9 @@ import {
   validateWorkspaceId,
   validateOptionalConvexId,
   validateActionId,
+  validateApiKeyId,
 } from "./lib/validators.js";
+import { generateApiKey } from "./auth/strategies/apikey.js";
 
 export type McpServerWrapper = ReturnType<typeof createServer>;
 
@@ -26,9 +28,10 @@ interface AuthContextFromExtra {
   workspaceId: Id<"workspaces">;
   workspaceMemberId: Id<"workspaceMembers">;
   role: "owner" | "admin" | "member" | "viewer";
-  authMethod: "oauth";
+  authMethod: "oauth" | "api-key";
   provider?: string;
   scopes: string[];
+  apiKeyId?: Id<"apiKeys">;
 }
 
 /**
@@ -1288,6 +1291,93 @@ Use either url/method/headers/body for ad-hoc requests, or templateSlug with var
           defaultWorkspaceId: defaultWorkspaceId as any,
           timezone,
         },
+      });
+      return jsonResponse(result);
+    }
+  );
+
+  // ============================================================================
+  // API KEY TOOLS
+  // ============================================================================
+
+  server.tool(
+    "apiKeys.create",
+    `Create a new API key for the current workspace.
+Returns the raw key ONCE - it cannot be retrieved again after creation.
+The key is scoped to the current workspace and inherits the specified scopes.
+
+Format: ocrm_live_<random>`,
+    {
+      name: z.string().describe("A descriptive name for this key (e.g., 'CI/CD Pipeline', 'Agent Key')"),
+      scopes: z
+        .array(z.enum(["crm:read", "crm:write", "crm:admin"]))
+        .min(1)
+        .describe("Permissions for this key"),
+      expiresInDays: z
+        .number()
+        .optional()
+        .describe("Number of days until key expires (omit for no expiration)"),
+    },
+    async ({ name, scopes, expiresInDays }, extra) => {
+      const auth = getAuthContext(extra, "apiKeys.create");
+
+      // Generate the key
+      const { rawKey, keyHash, keyPrefix } = generateApiKey("live");
+
+      // Calculate expiration if provided
+      const expiresAt = expiresInDays
+        ? Date.now() + expiresInDays * 24 * 60 * 60 * 1000
+        : undefined;
+
+      // Create in database
+      const result = await convex.mutation(api.functions.auth.apiKeys.create, {
+        userId: auth.userId,
+        workspaceId: auth.workspaceId,
+        name,
+        keyHash,
+        keyPrefix,
+        scopes,
+        expiresAt,
+      });
+
+      return jsonResponse({
+        ...result,
+        // Include the raw key - this is the ONLY time it's shown
+        key: rawKey,
+        warning: "Save this key now. It cannot be retrieved again.",
+      });
+    }
+  );
+
+  server.tool(
+    "apiKeys.list",
+    "List all API keys for the current workspace. Keys are shown with prefix only (not full key).",
+    {},
+    async (_args, extra) => {
+      const auth = getAuthContext(extra, "apiKeys.list");
+      const result = await convex.query(
+        api.functions.auth.apiKeys.listByUserAndWorkspace,
+        {
+          userId: auth.userId,
+          workspaceId: auth.workspaceId,
+        }
+      );
+      return jsonResponse(result);
+    }
+  );
+
+  server.tool(
+    "apiKeys.revoke",
+    "Revoke an API key. The key will immediately stop working.",
+    {
+      keyId: z.string().describe("API key ID to revoke"),
+    },
+    async ({ keyId }, extra) => {
+      const auth = getAuthContext(extra, "apiKeys.revoke");
+      validateApiKeyId(keyId);
+      const result = await convex.mutation(api.functions.auth.apiKeys.revoke, {
+        keyId: keyId as any,
+        actorUserId: auth.userId,
       });
       return jsonResponse(result);
     }

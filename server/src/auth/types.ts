@@ -14,9 +14,12 @@ export interface AuthContext {
   role: "owner" | "admin" | "member" | "viewer";
 
   // Auth metadata
-  authMethod: "oauth";
+  authMethod: "oauth" | "api-key";
   provider?: string;
   scopes: string[];
+
+  // API key specific (for tracking/auditing)
+  apiKeyId?: Id<"apiKeys">;
 }
 
 /**
