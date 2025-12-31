@@ -1,5 +1,6 @@
 import { mutation } from "../../_generated/server";
 import { v } from "convex/values";
+import type { Id } from "../../_generated/dataModel";
 import {
   seedSystemObjectTypes,
   generateWorkspaceSlug,
@@ -149,7 +150,7 @@ export const upsertFromOAuthWithWorkspace = mutation({
     // If user has workspaces, return the first one (or preferred default)
     if (memberships.length > 0) {
       // Get user to check for preferred workspace
-      const user = await ctx.db.get(userId as any);
+      const user = existingUser ?? await ctx.db.get(userId as Id<"users">);
       const preferredWorkspaceId = user?.preferences?.defaultWorkspaceId;
 
       // Find preferred membership or use first one
