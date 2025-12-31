@@ -65,43 +65,26 @@ The server will start on `http://localhost:3000` with:
 
 ### 5. Configure Authentication
 
-The MCP server requires OAuth authentication. Choose a provider and configure it:
+The MCP server requires OAuth 2.1 authentication. Choose a provider and configure it:
 
-#### Option A: PropelAuth (Recommended for quick setup)
-
-1. Create a project at [propelauth.com](https://propelauth.com)
-2. Go to **OAuth Config** → create an OAuth client
-   - Note the **Client ID** and add your redirect URI
-3. Add to `server/.env`:
-   ```bash
-   MCP_AUTH_PROVIDER=propelauth
-   PROPELAUTH_AUTH_URL=https://auth.yourproject.propelauthtest.com
-   ```
-
-#### Option B: Auth0
+#### Option A: Auth0 (Recommended)
 
 1. Create a tenant at [auth0.com](https://auth0.com)
 2. Create an **API** (Applications → APIs):
    - Identifier: `https://api.open-crm.example`
 3. Create an **Application** (Machine to Machine for agents, or SPA/Web App for users)
-4. Add to `server/.env`:
+4. **Enable Dynamic Client Registration** (required for MCP clients like Claude Code):
+   - Go to Settings → Advanced → enable "OIDC Conformant" and DCR
+5. Add to `server/.env`:
    ```bash
    MCP_AUTH_PROVIDER=auth0
    AUTH0_DOMAIN=your-tenant.auth0.com
    AUTH0_AUDIENCE=https://api.open-crm.example
    ```
 
-#### Option C: WorkOS
+#### Option B: Custom OIDC Provider
 
-1. Create an account at [workos.com](https://workos.com)
-2. Go to **Configuration** → **OAuth** → create an application
-3. Add to `server/.env`:
-   ```bash
-   MCP_AUTH_PROVIDER=workos
-   WORKOS_CLIENT_ID=client_01HXXXXXX
-   ```
-
-#### Option D: Custom JWKS (Any OIDC Provider)
+Any OIDC-compliant provider that supports Dynamic Client Registration (RFC 7591):
 
 ```bash
 MCP_AUTH_PROVIDER=custom
@@ -109,6 +92,8 @@ OAUTH_ISSUER=https://your-idp.com
 OAUTH_JWKS_URI=https://your-idp.com/.well-known/jwks.json
 OAUTH_AUDIENCE=https://api.open-crm.example  # Optional
 ```
+
+> **Note on MCP Client Compatibility**: MCP clients like Claude Code require your OAuth provider to support [Dynamic Client Registration (RFC 7591)](https://datatracker.ietf.org/doc/html/rfc7591). This allows AI agents to register themselves as OAuth clients automatically. Providers without DCR support will only work with the REST API or stdio transport.
 
 ### 6. First Login
 

@@ -17,7 +17,7 @@ export interface OAuthStrategyConfig {
   audience?: string;
   convexUrl: string;
   autoCreateWorkspace?: boolean;
-  /** Default scopes when token has none (e.g., PropelAuth doesn't include custom scopes) */
+  /** Default scopes when token has none */
   defaultScopes?: string[];
 }
 
@@ -132,9 +132,10 @@ export class OAuthStrategy implements AuthProvider {
    * Extract workspace ID from token claims or request header
    * Priority: token claim > header
    *
-   * Common claim names by provider:
-   * - PropelAuth: org_id
-   * - Auth0/custom: workspace_id or https://agent-crm/workspace_id
+   * Common claim names:
+   * - workspace_id (standard)
+   * - org_id (legacy, for backwards compatibility)
+   * - https://open-crm/workspace_id (namespaced custom claim)
    */
   private extractWorkspaceId(
     claims: TokenClaims,
@@ -143,7 +144,7 @@ export class OAuthStrategy implements AuthProvider {
     // Try token claims first (M2M flow)
     const claimWorkspaceId =
       (claims.workspace_id as string) ??
-      (claims.org_id as string) ?? // PropelAuth uses org_id
+      (claims.org_id as string) ?? // Legacy support
       (claims["https://open-crm/workspace_id"] as string);
 
     if (claimWorkspaceId) {
@@ -180,7 +181,7 @@ export class OAuthStrategy implements AuthProvider {
       return claims.scp;
     }
 
-    // Fall back to default scopes (for providers like PropelAuth that don't include custom scopes)
+    // Fall back to default scopes (for providers that don't include custom scopes in tokens)
     if (this.config.defaultScopes && this.config.defaultScopes.length > 0) {
       return this.config.defaultScopes;
     }

@@ -77,8 +77,6 @@ bun run build            # Deploys to Convex production
 │       │   ├── strategies/     # Auth strategies
 │       │   │   └── oauth.ts    # Bearer token + JWKS validation
 │       │   └── providers/      # OAuth provider configs
-│       │       ├── workos.ts
-│       │       ├── propelauth.ts
 │       │       ├── auth0.ts
 │       │       └── custom.ts
 │       └── rest/               # REST API (Hono + OpenAPI)
@@ -225,49 +223,26 @@ DISABLE_AUTO_WORKSPACE=true                         # Disable auto-workspace cre
 
 The MCP server implements OAuth 2.1 as a Resource Server (RFC 9728 compliant). It validates JWT tokens but does not issue them - users authenticate with an external OAuth provider.
 
+### Dynamic Client Registration (DCR) Requirement
+
+**Important**: MCP clients like Claude Code require your OAuth provider to support [Dynamic Client Registration (RFC 7591)](https://datatracker.ietf.org/doc/html/rfc7591). This allows AI agents to register themselves as OAuth clients automatically without manual configuration.
+
+Providers **with** DCR support work with full MCP integration:
+- Auth0 (enable in API settings)
+- Keycloak
+- Other OIDC-compliant identity providers with DCR enabled
+
+Providers **without** DCR support:
+- Can still use the REST API with manually-obtained tokens
+- Can use stdio transport for local MCP access (see [Using with Claude Code](#using-with-claude-code))
+
+For more details, see the [MCP Authorization Specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization).
+
 ### OAuth Provider Setup
 
 Choose one OAuth provider and complete both the **provider dashboard setup** and **MCP server configuration**.
 
-#### PropelAuth
-
-**Dashboard Setup** ([docs.propelauth.com](https://docs.propelauth.com)):
-1. Create a PropelAuth project at [propelauth.com](https://propelauth.com)
-2. Go to **OAuth Config** in your PropelAuth dashboard
-3. Create an OAuth client:
-   - Note the **Client ID** and **Client Secret**
-   - Add redirect URI: `https://your-mcp-client.example/callback` (depends on your MCP client)
-4. Configure allowed scopes (include `email`, `openid`, `profile`)
-5. Note your **Auth URL** (e.g., `https://auth.yourproject.propelauthtest.com`)
-
-**MCP Server `.env`:**
-```bash
-MCP_AUTH_PROVIDER=propelauth
-PROPELAUTH_AUTH_URL=https://auth.yourproject.propelauthtest.com
-```
-
-**Token claims**: PropelAuth uses `org_id` for workspace ID (mapped automatically).
-
-#### WorkOS
-
-**Dashboard Setup** ([workos.com/docs](https://workos.com/docs)):
-1. Create a WorkOS account at [workos.com](https://workos.com)
-2. Go to **Configuration** → **OAuth**
-3. Create an OAuth application:
-   - Note the **Client ID**
-   - Add redirect URI: `https://your-mcp-client.example/callback`
-4. Go to **API Keys** and create an API key (optional, for management APIs)
-5. Configure SSO connections if using enterprise SSO
-
-**MCP Server `.env`:**
-```bash
-MCP_AUTH_PROVIDER=workos
-WORKOS_CLIENT_ID=client_01HXXXXXX
-```
-
-**JWKS endpoint**: `https://api.workos.com/sso/jwks/{client_id}` (automatic)
-
-#### Auth0
+#### Auth0 (Recommended)
 
 **Dashboard Setup** ([auth0.com/docs](https://auth0.com/docs)):
 1. Create an Auth0 tenant at [auth0.com](https://auth0.com)
@@ -280,7 +255,10 @@ WORKOS_CLIENT_ID=client_01HXXXXXX
    - For M2M/agents: **Machine to Machine** (select the API created above)
    - Note the **Client ID** and **Client Secret**
    - Add callback URLs for your MCP client
-4. Configure scopes in your API settings (add `crm:read`, `crm:write`, `crm:admin`)
+4. **Enable Dynamic Client Registration** (for MCP clients):
+   - Go to Settings → Advanced → enable "OIDC Conformant"
+   - Enable DCR in your API settings
+5. Configure scopes in your API settings (add `crm:read`, `crm:write`, `crm:admin`)
 
 **MCP Server `.env`:**
 ```bash
@@ -302,9 +280,9 @@ curl -X POST "https://your-tenant.auth0.com/oauth/token" \
   }'
 ```
 
-#### Custom JWKS (Any OIDC Provider)
+#### Custom OIDC Provider
 
-For any OAuth provider that supports OIDC/JWKS:
+For any OAuth provider that supports OIDC/JWKS and DCR:
 
 **MCP Server `.env`:**
 ```bash
@@ -326,7 +304,7 @@ X-Workspace-Id: <workspace_id>    # Optional if token contains workspace claim
 ### Workspace ID
 
 The workspace ID can be provided via:
-1. **Token claim** (for M2M clients): `workspace_id`, `org_id` (PropelAuth), or `https://open-crm/workspace_id`
+1. **Token claim** (for M2M clients): `workspace_id` or `https://open-crm/workspace_id`
 2. **Header** (for interactive users): `X-Workspace-Id`
 
 Token claims take precedence over headers.

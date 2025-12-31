@@ -99,21 +99,11 @@ function getAuthorizationServers(config: AuthConfig): string[] {
   if (!config.oauth) return [];
 
   switch (config.oauth.provider) {
-    case "propelauth":
-      if (config.oauth.propelAuthUrl) {
-        return [config.oauth.propelAuthUrl];
-      }
-      break;
-
     case "auth0":
       if (config.oauth.auth0Domain) {
         return [`https://${config.oauth.auth0Domain}`];
       }
       break;
-
-    case "workos":
-      // WorkOS authorization endpoint
-      return ["https://api.workos.com"];
 
     case "custom":
       if (config.oauth.issuer) {

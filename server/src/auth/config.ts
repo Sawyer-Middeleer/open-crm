@@ -1,15 +1,7 @@
-export type AuthProviderType =
-  | "workos"
-  | "propelauth"
-  | "auth0"
-  | "custom";
+export type AuthProviderType = "auth0" | "custom";
 
 export interface OAuthConfig {
   provider: AuthProviderType;
-  // WorkOS
-  workosClientId?: string;
-  // PropelAuth
-  propelAuthUrl?: string;
   // Auth0
   auth0Domain?: string;
   auth0Audience?: string;
@@ -57,14 +49,6 @@ export function loadAuthConfig(): AuthConfig {
     config.oauth = { provider };
 
     switch (provider) {
-      case "workos":
-        config.oauth.workosClientId = process.env.WORKOS_CLIENT_ID;
-        break;
-
-      case "propelauth":
-        config.oauth.propelAuthUrl = process.env.PROPELAUTH_AUTH_URL;
-        break;
-
       case "auth0":
         config.oauth.auth0Domain = process.env.AUTH0_DOMAIN;
         config.oauth.auth0Audience = process.env.AUTH0_AUDIENCE;

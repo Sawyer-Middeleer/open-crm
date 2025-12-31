@@ -1,8 +1,6 @@
 import { AuthManager } from "./manager.js";
 import { loadAuthConfig, type AuthConfig } from "./config.js";
 import {
-  createWorkOSProvider,
-  createPropelAuthProvider,
   createAuth0Provider,
   createCustomProvider,
 } from "./providers/index.js";
@@ -18,8 +16,6 @@ export function createAuthManager(config?: AuthConfig): AuthManager {
   // Add OAuth provider if configured
   if (resolvedConfig.oauth) {
     const oauthProvider =
-      createWorkOSProvider(resolvedConfig.oauth, resolvedConfig.convexUrl, resolvedConfig.autoCreateWorkspace) ??
-      createPropelAuthProvider(resolvedConfig.oauth, resolvedConfig.convexUrl, resolvedConfig.autoCreateWorkspace) ??
       createAuth0Provider(resolvedConfig.oauth, resolvedConfig.convexUrl, resolvedConfig.autoCreateWorkspace) ??
       createCustomProvider(resolvedConfig.oauth, resolvedConfig.convexUrl, resolvedConfig.autoCreateWorkspace);
 
@@ -30,7 +26,7 @@ export function createAuthManager(config?: AuthConfig): AuthManager {
 
   if (providers.length === 0) {
     throw new Error(
-      "No OAuth provider configured. Set MCP_AUTH_PROVIDER environment variable."
+      "No OAuth provider configured. Set MCP_AUTH_PROVIDER environment variable to 'auth0' or 'custom'."
     );
   }
 
