@@ -19,6 +19,14 @@ import {
 } from "./lib/rateLimiter.js";
 import { getConvexClient } from "./convex/client.js";
 import { createRestApi } from "./rest/index.js";
+import {
+  handleAuthorizationServerMetadata,
+  handleAuthorize,
+  handleCallback,
+  handleToken,
+  handleRegister,
+  oauthStorage,
+} from "./oauth/index.js";
 
 // Session TTL configuration (configurable via env vars)
 const SESSION_TTL_MS = parseInt(process.env.SESSION_TTL_MINUTES || "30", 10) * 60 * 1000;
@@ -75,8 +83,16 @@ function handleWellKnown(config: AuthConfig, request: Request): Response {
     scopes_supported: getSupportedScopes(),
   };
 
-  // Add authorization server hints if OAuth is configured
-  if (config.oauth) {
+  // Add authorization server hints
+  // If OAuth proxy is enabled, point to self; otherwise point to external OAuth provider
+  if (config.oauthProxy?.enabled) {
+    // Point to our own OAuth AS endpoints
+    const selfIssuer = resourceUri
+      ? new URL(resourceUri).origin
+      : new URL(request.url).origin;
+    metadata.authorization_servers = [selfIssuer];
+  } else if (config.oauth) {
+    // Point to external OAuth provider (Auth0, etc.)
     const authServers = getAuthorizationServers(config);
     if (authServers.length > 0) {
       metadata.authorization_servers = authServers;
@@ -202,6 +218,14 @@ export async function startHttpServer(): Promise<void> {
         `[MCP] Cleaned up rate limits: ${ipCleaned} IP, ${userCleaned} user entries`
       );
     }
+
+    // Clean up OAuth storage
+    const oauthCleaned = oauthStorage.cleanup();
+    if (oauthCleaned.authCodes > 0 || oauthCleaned.pkcePending > 0) {
+      console.log(
+        `[OAuth] Cleaned up: ${oauthCleaned.authCodes} auth codes, ${oauthCleaned.pkcePending} PKCE entries`
+      );
+    }
   }, CLEANUP_INTERVAL_MS);
 
   console.log(`[MCP] Starting HTTP server on ${hostname}:${port}`);
@@ -229,6 +253,31 @@ export async function startHttpServer(): Promise<void> {
       // Health check
       if (url.pathname === "/health") {
         return handleHealthCheck();
+      }
+
+      // OAuth Authorization Server Metadata (RFC 8414)
+      if (url.pathname === "/.well-known/oauth-authorization-server") {
+        return handleAuthorizationServerMetadata(config, request);
+      }
+
+      // OAuth Authorization Endpoint
+      if (url.pathname === "/oauth/authorize" && request.method === "GET") {
+        return handleAuthorize(request, config);
+      }
+
+      // OAuth Callback (from Auth0)
+      if (url.pathname === "/oauth/callback" && request.method === "GET") {
+        return handleCallback(request, config);
+      }
+
+      // OAuth Token Endpoint
+      if (url.pathname === "/oauth/token" && request.method === "POST") {
+        return handleToken(request);
+      }
+
+      // OAuth Dynamic Client Registration
+      if (url.pathname === "/oauth/register" && request.method === "POST") {
+        return handleRegister(request, config);
       }
 
       // REST API endpoint

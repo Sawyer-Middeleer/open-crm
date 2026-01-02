@@ -15,9 +15,29 @@ export interface ApiKeyConfig {
   enabled: boolean;
 }
 
+/**
+ * OAuth Authorization Server proxy configuration.
+ * When enabled, open-crm acts as an OAuth AS that proxies to Auth0.
+ */
+export interface OAuthProxyConfig {
+  /** Whether OAuth AS proxy is enabled */
+  enabled: boolean;
+  /** Auth0 web application client ID (for authorization code flow) */
+  auth0WebClientId: string;
+  /** Auth0 web application client secret */
+  auth0WebClientSecret: string;
+  /** Callback URL for Auth0 redirects */
+  callbackUrl: string;
+  /** Whether DCR is enabled */
+  dcrEnabled: boolean;
+}
+
 export interface AuthConfig {
-  // OAuth provider configuration
+  // OAuth provider configuration (for token validation)
   oauth?: OAuthConfig;
+
+  // OAuth AS proxy configuration (for authorization flow)
+  oauthProxy?: OAuthProxyConfig;
 
   // API Key configuration
   apiKey?: ApiKeyConfig;
@@ -73,6 +93,21 @@ export function loadAuthConfig(): AuthConfig {
         config.oauth.audience = process.env.OAUTH_AUDIENCE;
         break;
     }
+  }
+
+  // OAuth AS proxy configuration (for MCP client authorization flow)
+  const auth0WebClientId = process.env.AUTH0_WEB_CLIENT_ID;
+  const auth0WebClientSecret = process.env.AUTH0_WEB_CLIENT_SECRET;
+  const callbackUrl = process.env.OAUTH_CALLBACK_URL;
+
+  if (auth0WebClientId && auth0WebClientSecret && callbackUrl) {
+    config.oauthProxy = {
+      enabled: true,
+      auth0WebClientId,
+      auth0WebClientSecret,
+      callbackUrl,
+      dcrEnabled: process.env.DCR_ENABLED !== "false", // Enabled by default
+    };
   }
 
   return config;

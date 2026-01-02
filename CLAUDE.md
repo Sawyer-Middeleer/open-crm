@@ -118,6 +118,15 @@ bun run setup:oauth     # Configure OAuth provider (for remote MCP)
 │       │   └── providers/      # OAuth provider configs
 │       │       ├── auth0.ts
 │       │       └── custom.ts
+│       ├── oauth/              # OAuth Authorization Server (proxy to Auth0)
+│       │   ├── authorize.ts    # /oauth/authorize endpoint
+│       │   ├── callback.ts     # /oauth/callback endpoint
+│       │   ├── token.ts        # /oauth/token endpoint
+│       │   ├── register.ts     # /oauth/register (DCR) endpoint
+│       │   ├── metadata.ts     # /.well-known/oauth-authorization-server
+│       │   ├── storage.ts      # In-memory storage for auth codes/PKCE
+│       │   ├── pkce.ts         # PKCE utilities
+│       │   └── errors.ts       # RFC 6749 error responses
 │       └── rest/               # REST API (Hono + OpenAPI)
 │           ├── index.ts        # Hono app factory
 │           ├── middleware/     # Auth, rate limiting, error handling
@@ -267,6 +276,12 @@ DISABLE_AUTO_WORKSPACE=true                         # Disable auto-workspace cre
 
 # API Key Authentication
 API_KEY_AUTH_ENABLED=false                          # Disable API key auth (default: true/enabled)
+
+# OAuth Authorization Server Proxy (for MCP client authentication)
+AUTH0_WEB_CLIENT_ID=your-web-app-client-id          # Auth0 Regular Web Application client ID
+AUTH0_WEB_CLIENT_SECRET=your-client-secret          # Auth0 client secret
+OAUTH_CALLBACK_URL=https://your-server/oauth/callback  # Must be registered in Auth0
+DCR_ENABLED=false                                   # Disable DCR (default: true/enabled)
 ```
 
 ## Authentication (OAuth 2.1)
@@ -443,6 +458,78 @@ curl https://your-server/api/v1/users/me \
 - API key auth is enabled by default. Disable with `API_KEY_AUTH_ENABLED=false`
 - Only workspace owners and admins can create API keys
 - Keys are validated on every request (revocation takes effect immediately)
+
+## OAuth Authorization Server Proxy
+
+For MCP clients (like Claude Code) that need to authenticate via OAuth, the server includes a built-in OAuth Authorization Server that proxies to Auth0. This eliminates the need for MCP clients to integrate directly with Auth0.
+
+### How It Works
+
+```
+MCP Client → Open CRM (OAuth AS Proxy) → Auth0
+```
+
+1. MCP client discovers auth server via `/.well-known/oauth-protected-resource`
+2. MCP client fetches metadata from `/.well-known/oauth-authorization-server`
+3. MCP client registers via `/oauth/register` (DCR)
+4. MCP client initiates auth at `/oauth/authorize` → redirects to Auth0
+5. User authenticates with Auth0 → redirects back to `/oauth/callback`
+6. MCP client exchanges code at `/oauth/token` → receives Auth0 tokens
+7. MCP client uses tokens with `/mcp` endpoint (existing token validation)
+
+### OAuth Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/.well-known/oauth-authorization-server` | GET | RFC 8414 metadata |
+| `/oauth/authorize` | GET | Start authorization flow |
+| `/oauth/callback` | GET | Handle Auth0 redirect |
+| `/oauth/token` | POST | Exchange code for tokens |
+| `/oauth/register` | POST | Dynamic Client Registration (RFC 7591) |
+
+### Setup
+
+1. **Create an Auth0 Regular Web Application** (not M2M):
+   - Go to Auth0 Dashboard → Applications → Create Application
+   - Choose "Regular Web Applications"
+   - Add callback URL: `https://your-server.com/oauth/callback`
+   - Note the Client ID and Client Secret
+
+2. **Configure environment variables**:
+   ```bash
+   # These are in ADDITION to the existing AUTH0_DOMAIN and AUTH0_AUDIENCE
+   AUTH0_WEB_CLIENT_ID=your-web-app-client-id
+   AUTH0_WEB_CLIENT_SECRET=your-client-secret
+   OAUTH_CALLBACK_URL=https://your-server.com/oauth/callback
+   ```
+
+3. **Restart the server** - OAuth AS proxy is automatically enabled when these vars are set
+
+### MCP Client Configuration
+
+Once configured, MCP clients can connect using just the server URL:
+
+```json
+{
+  "mcpServers": {
+    "open-crm": {
+      "url": "https://your-server.com/mcp"
+    }
+  }
+}
+```
+
+The client will automatically discover the OAuth endpoints and prompt for authentication.
+
+### DCR (Dynamic Client Registration)
+
+DCR is enabled by default, allowing MCP clients to register automatically. To disable:
+
+```bash
+DCR_ENABLED=false
+```
+
+When disabled, clients must be pre-registered or use a known client_id.
 
 ## Multi-Tenancy
 

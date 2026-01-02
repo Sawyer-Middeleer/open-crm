@@ -106,21 +106,42 @@ Run the OAuth setup:
 cd server && bun run setup:oauth
 ```
 
-#### Option A: Auth0 (Recommended)
+#### Option A: Auth0 with OAuth Proxy (Recommended for MCP Clients)
+
+This sets up Open CRM as an OAuth Authorization Server that proxies to Auth0. MCP clients (like Claude Code) can authenticate automatically without needing to configure Auth0 directly.
 
 1. Create a tenant at [auth0.com](https://auth0.com)
 2. Create an **API** (Applications → APIs):
    - Identifier: `https://api.open-crm.example`
-3. Create an **Application** (Machine to Machine for agents, or SPA/Web App for users)
-4. **Enable Dynamic Client Registration** (required for MCP clients like Claude Code):
+3. Create a **Regular Web Application** (Applications → Applications):
+   - Add callback URL: `https://your-server.com/oauth/callback`
+   - Note the Client ID and Client Secret
+4. Run the setup wizard and select "Auth0 with OAuth Proxy"
+5. Enter your Auth0 domain, audience, client ID, client secret, and callback URL
+
+Once configured, MCP clients can connect with just the server URL:
+```json
+{
+  "mcpServers": {
+    "open-crm": {
+      "url": "https://your-server.com/mcp"
+    }
+  }
+}
+```
+
+#### Option B: Auth0 (Token Validation Only)
+
+If you prefer to have clients authenticate directly with Auth0 (requires DCR support):
+
+1. Follow steps 1-2 above
+2. **Enable Dynamic Client Registration** (required for MCP clients):
    - Go to Settings → Advanced → enable "OIDC Conformant" and DCR
-5. Enter your Auth0 domain and audience when prompted
+3. Run setup and select "Auth0 (token validation only)"
 
-#### Option B: Custom OIDC Provider
+#### Option C: Custom OIDC Provider
 
-Any OIDC-compliant provider that supports Dynamic Client Registration (RFC 7591).
-
-> **Note**: MCP clients like Claude Code require DCR support for automatic OAuth registration. Without DCR, use API keys for the REST API or stdio transport for local MCP.
+Any OIDC-compliant provider. Note that MCP clients require DCR (RFC 7591) support, or use the OAuth proxy approach.
 
 ### First Login (OAuth users)
 
@@ -174,9 +195,21 @@ See [CLAUDE.md](./CLAUDE.md) for detailed authentication setup instructions.
 
 ## Using with Claude Code
 
-### Option 1: Remote MCP (HTTP with OAuth) - Recommended
+### Option 1: Remote MCP with OAuth Proxy (Recommended)
 
-Connect Claude Code to your deployed MCP server via HTTP. Authentication is handled automatically via OAuth - just authenticate when prompted and your workspace will be created automatically on first login.
+If you've configured the OAuth proxy (see Step 5, Option A), MCP clients can connect with just the URL:
+
+```json
+{
+  "mcpServers": {
+    "open-crm": {
+      "url": "https://your-server.com/mcp"
+    }
+  }
+}
+```
+
+When you click "Connect" and "Authenticate", you'll be redirected to Auth0 to log in. Your workspace is created automatically on first login.
 
 ### Option 2: Local Development (stdio)
 

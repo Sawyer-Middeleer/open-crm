@@ -8,10 +8,11 @@ import {
   printError,
   printKeyValue,
   printNextSteps,
+  confirm,
 } from "./prompts.js";
 import { writeServerEnv } from "./utils.js";
 
-type OAuthProvider = "auth0" | "custom" | "skip";
+type OAuthProvider = "auth0-proxy" | "auth0" | "custom" | "skip";
 
 /**
  * Run the OAuth provider setup wizard
@@ -26,9 +27,14 @@ export async function runOAuthSetup(): Promise<void> {
 
   const provider = await select<OAuthProvider>("Select OAuth provider:", [
     {
+      value: "auth0-proxy",
+      label: "Auth0 with OAuth Proxy (recommended for MCP clients)",
+      description: "Open CRM handles OAuth flow, proxies to Auth0",
+    },
+    {
       value: "auth0",
-      label: "Auth0 (recommended)",
-      description: "Quick setup with free tier",
+      label: "Auth0 (token validation only)",
+      description: "Clients authenticate directly with Auth0 (requires DCR)",
     },
     {
       value: "custom",
@@ -48,7 +54,9 @@ export async function runOAuthSetup(): Promise<void> {
     return;
   }
 
-  if (provider === "auth0") {
+  if (provider === "auth0-proxy") {
+    await setupAuth0WithProxy();
+  } else if (provider === "auth0") {
     await setupAuth0();
   } else {
     await setupCustomOidc();
@@ -56,10 +64,80 @@ export async function runOAuthSetup(): Promise<void> {
 }
 
 /**
- * Setup Auth0 as OAuth provider
+ * Setup Auth0 with OAuth Authorization Server Proxy
+ * This is the recommended setup for MCP clients like Claude Code
+ */
+async function setupAuth0WithProxy(): Promise<void> {
+  printSection("Auth0 with OAuth Proxy Setup");
+
+  console.log("This setup enables MCP clients to authenticate automatically.\n");
+
+  console.log("1. Create an Auth0 account at https://auth0.com (free tier available)\n");
+
+  console.log("2. Create an API (Applications > APIs > Create API):");
+  console.log("   - Name: Open CRM API");
+  console.log("   - Identifier: https://api.open-crm.example (or your domain)");
+  console.log("   - Signing Algorithm: RS256\n");
+
+  console.log("3. Create a Regular Web Application (Applications > Applications > Create):");
+  console.log("   - Type: Regular Web Applications");
+  console.log("   - Add Allowed Callback URL: https://your-server.com/oauth/callback");
+  console.log("   - Note the Client ID and Client Secret\n");
+
+  console.log("4. Enable scopes in the API settings:");
+  console.log("   - crm:read");
+  console.log("   - crm:write");
+  console.log("   - crm:admin\n");
+
+  const ready = await prompt("Press Enter when you've completed the Auth0 setup...");
+
+  // Collect Auth0 configuration
+  printSection("Auth0 Configuration");
+
+  const domain = await promptRequired("Auth0 domain (e.g., your-tenant.auth0.com)");
+  const audience = await promptRequired("API Identifier/Audience (e.g., https://api.open-crm.example)");
+
+  printSection("OAuth Proxy Configuration");
+
+  const webClientId = await promptRequired("Regular Web App Client ID");
+  const webClientSecret = await promptRequired("Regular Web App Client Secret");
+  const callbackUrl = await promptRequired("Callback URL (e.g., https://your-server.com/oauth/callback)");
+
+  // Validate domain format
+  const cleanDomain = domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+
+  // Write to .env
+  writeServerEnv({
+    MCP_AUTH_PROVIDER: "auth0",
+    AUTH0_DOMAIN: cleanDomain,
+    AUTH0_AUDIENCE: audience,
+    AUTH0_WEB_CLIENT_ID: webClientId,
+    AUTH0_WEB_CLIENT_SECRET: webClientSecret,
+    OAUTH_CALLBACK_URL: callbackUrl,
+  });
+
+  printSuccess("Auth0 configuration with OAuth proxy saved to server/.env");
+
+  console.log("\nConfiguration:");
+  printKeyValue("Provider", "Auth0");
+  printKeyValue("Domain", cleanDomain);
+  printKeyValue("Audience", audience);
+  printKeyValue("OAuth Proxy", "Enabled");
+  printKeyValue("Callback URL", callbackUrl);
+
+  printNextSteps([
+    "Restart the server: bun run dev:server",
+    "MCP clients can now connect with just the URL:",
+    `  { "url": "https://your-server/mcp" }`,
+    "Users will be redirected to Auth0 to authenticate",
+  ]);
+}
+
+/**
+ * Setup Auth0 as OAuth provider (token validation only, no proxy)
  */
 async function setupAuth0(): Promise<void> {
-  printSection("Auth0 Setup Instructions");
+  printSection("Auth0 Setup Instructions (Token Validation Only)");
 
   console.log("1. Create an Auth0 account at https://auth0.com (free tier available)\n");
 
