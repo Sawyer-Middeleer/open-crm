@@ -28,8 +28,8 @@ export async function runOAuthSetup(): Promise<void> {
   const provider = await select<OAuthProvider>("Select OAuth provider:", [
     {
       value: "auth0",
-      label: "Auth0 (recommended)",
-      description: "Quick setup with free tier, includes OAuth proxy for MCP clients",
+      label: "Auth0",
+      description: "Quick setup with free tier, supports OAuth proxy for MCP clients",
     },
     {
       value: "custom",

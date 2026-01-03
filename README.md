@@ -106,7 +106,7 @@ Run the OAuth setup:
 cd server && bun run setup:oauth
 ```
 
-#### Auth0 (Recommended)
+#### Auth0
 
 1. Create a tenant at [auth0.com](https://auth0.com)
 2. Create an **API** (Applications → APIs):
@@ -115,7 +115,7 @@ cd server && bun run setup:oauth
    - Add callback URL: `https://your-server.com/oauth/callback`
    - Note the Client ID and Client Secret
 4. Run the setup wizard and select "Auth0"
-5. Enable the OAuth proxy when prompted (recommended for MCP clients)
+5. Enable the OAuth proxy when prompted
 
 Once configured with OAuth proxy, MCP clients can connect with just the server URL:
 ```json
@@ -184,7 +184,7 @@ See [CLAUDE.md](./CLAUDE.md) for detailed authentication setup instructions.
 
 ## Using with Claude Code
 
-### Option 1: Remote MCP with OAuth Proxy (Recommended)
+### Remote MCP with OAuth Proxy
 
 If you've configured the OAuth proxy (see Step 5, Option A), MCP clients can connect with just the URL:
 
@@ -243,7 +243,7 @@ For local development, Claude Code can spawn the server as a subprocess. This re
 
 4. Restart Claude Code or run `/mcp` to verify the connection.
 
-Note: Stdio transport is recommended for local development. For production integrations, use the HTTP transport with OAuth 2.1.
+Stdio transport is best for local development. For production, use HTTP transport with OAuth 2.1.
 
 ## Using with Other MCP Clients
 

@@ -1,10 +1,7 @@
 /**
  * OAuth Authorization Server Module
- *
- * Exports all OAuth AS proxy functionality.
  */
 
-// Types
 export type {
   AuthorizationCodeEntry,
   PKCEPendingEntry,
@@ -17,14 +14,12 @@ export type {
   OAuthErrorCode,
 } from "./types.js";
 
-// Storage
 export {
   oauthStorage,
   createAuthCodeEntry,
   createPKCEPendingEntry,
 } from "./storage.js";
 
-// PKCE utilities
 export {
   generateCodeVerifier,
   generateState,
@@ -34,7 +29,6 @@ export {
   isValidCodeChallenge,
 } from "./pkce.js";
 
-// Error handling
 export {
   createOAuthError,
   buildErrorRedirect,
@@ -45,7 +39,6 @@ export {
   ERROR_DESCRIPTIONS,
 } from "./errors.js";
 
-// Endpoint handlers
 export { handleAuthorizationServerMetadata } from "./metadata.js";
 export { handleAuthorize } from "./authorize.js";
 export { handleCallback } from "./callback.js";

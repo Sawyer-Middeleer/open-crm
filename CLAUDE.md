@@ -307,7 +307,7 @@ For more details, see the [MCP Authorization Specification](https://modelcontext
 
 Choose one OAuth provider and complete both the **provider dashboard setup** and **MCP server configuration**.
 
-#### Auth0 (Recommended)
+#### Auth0
 
 **Dashboard Setup** ([auth0.com/docs](https://auth0.com/docs)):
 1. Create an Auth0 tenant at [auth0.com](https://auth0.com)
