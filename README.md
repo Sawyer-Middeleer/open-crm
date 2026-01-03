@@ -106,9 +106,7 @@ Run the OAuth setup:
 cd server && bun run setup:oauth
 ```
 
-#### Option A: Auth0 with OAuth Proxy (Recommended for MCP Clients)
-
-This sets up Open CRM as an OAuth Authorization Server that proxies to Auth0. MCP clients (like Claude Code) can authenticate automatically without needing to configure Auth0 directly.
+#### Auth0 (Recommended)
 
 1. Create a tenant at [auth0.com](https://auth0.com)
 2. Create an **API** (Applications → APIs):
@@ -116,10 +114,10 @@ This sets up Open CRM as an OAuth Authorization Server that proxies to Auth0. MC
 3. Create a **Regular Web Application** (Applications → Applications):
    - Add callback URL: `https://your-server.com/oauth/callback`
    - Note the Client ID and Client Secret
-4. Run the setup wizard and select "Auth0 with OAuth Proxy"
-5. Enter your Auth0 domain, audience, client ID, client secret, and callback URL
+4. Run the setup wizard and select "Auth0"
+5. Enable the OAuth proxy when prompted (recommended for MCP clients)
 
-Once configured, MCP clients can connect with just the server URL:
+Once configured with OAuth proxy, MCP clients can connect with just the server URL:
 ```json
 {
   "mcpServers": {
@@ -130,18 +128,9 @@ Once configured, MCP clients can connect with just the server URL:
 }
 ```
 
-#### Option B: Auth0 (Token Validation Only)
+#### Custom OIDC Provider
 
-If you prefer to have clients authenticate directly with Auth0 (requires DCR support):
-
-1. Follow steps 1-2 above
-2. **Enable Dynamic Client Registration** (required for MCP clients):
-   - Go to Settings → Advanced → enable "OIDC Conformant" and DCR
-3. Run setup and select "Auth0 (token validation only)"
-
-#### Option C: Custom OIDC Provider
-
-Any OIDC-compliant provider. Note that MCP clients require DCR (RFC 7591) support, or use the OAuth proxy approach.
+Any OIDC-compliant provider. The setup wizard will prompt for issuer URL and JWKS endpoint.
 
 ### First Login (OAuth users)
 

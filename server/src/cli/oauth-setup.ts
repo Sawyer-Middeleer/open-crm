@@ -12,7 +12,7 @@ import {
 } from "./prompts.js";
 import { writeServerEnv } from "./utils.js";
 
-type OAuthProvider = "auth0-proxy" | "auth0" | "custom" | "skip";
+type OAuthProvider = "auth0" | "custom" | "skip";
 
 /**
  * Run the OAuth provider setup wizard
@@ -27,14 +27,9 @@ export async function runOAuthSetup(): Promise<void> {
 
   const provider = await select<OAuthProvider>("Select OAuth provider:", [
     {
-      value: "auth0-proxy",
-      label: "Auth0 with OAuth Proxy (recommended for MCP clients)",
-      description: "Open CRM handles OAuth flow, proxies to Auth0",
-    },
-    {
       value: "auth0",
-      label: "Auth0 (token validation only)",
-      description: "Clients authenticate directly with Auth0 (requires DCR)",
+      label: "Auth0 (recommended)",
+      description: "Quick setup with free tier, includes OAuth proxy for MCP clients",
     },
     {
       value: "custom",
@@ -54,9 +49,7 @@ export async function runOAuthSetup(): Promise<void> {
     return;
   }
 
-  if (provider === "auth0-proxy") {
-    await setupAuth0WithProxy();
-  } else if (provider === "auth0") {
+  if (provider === "auth0") {
     await setupAuth0();
   } else {
     await setupCustomOidc();
@@ -64,13 +57,10 @@ export async function runOAuthSetup(): Promise<void> {
 }
 
 /**
- * Setup Auth0 with OAuth Authorization Server Proxy
- * This is the recommended setup for MCP clients like Claude Code
+ * Setup Auth0 as OAuth provider
  */
-async function setupAuth0WithProxy(): Promise<void> {
-  printSection("Auth0 with OAuth Proxy Setup");
-
-  console.log("This setup enables MCP clients to authenticate automatically.\n");
+async function setupAuth0(): Promise<void> {
+  printSection("Auth0 Setup Instructions");
 
   console.log("1. Create an Auth0 account at https://auth0.com (free tier available)\n");
 
@@ -97,85 +87,35 @@ async function setupAuth0WithProxy(): Promise<void> {
   const domain = await promptRequired("Auth0 domain (e.g., your-tenant.auth0.com)");
   const audience = await promptRequired("API Identifier/Audience (e.g., https://api.open-crm.example)");
 
-  printSection("OAuth Proxy Configuration");
-
-  const webClientId = await promptRequired("Regular Web App Client ID");
-  const webClientSecret = await promptRequired("Regular Web App Client Secret");
-  const callbackUrl = await promptRequired("Callback URL (e.g., https://your-server.com/oauth/callback)");
-
   // Validate domain format
   const cleanDomain = domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
 
-  // Write to .env
-  writeServerEnv({
+  // OAuth Proxy configuration (for MCP clients)
+  printSection("OAuth Proxy for MCP Clients");
+
+  console.log("The OAuth proxy enables MCP clients (like Claude Code) to authenticate");
+  console.log("by redirecting to Auth0. Without it, clients need tokens from elsewhere.\n");
+
+  const enableProxy = await confirm("Enable OAuth proxy for MCP client authentication?", true);
+
+  const envVars: Record<string, string> = {
     MCP_AUTH_PROVIDER: "auth0",
     AUTH0_DOMAIN: cleanDomain,
     AUTH0_AUDIENCE: audience,
-    AUTH0_WEB_CLIENT_ID: webClientId,
-    AUTH0_WEB_CLIENT_SECRET: webClientSecret,
-    OAUTH_CALLBACK_URL: callbackUrl,
-  });
+  };
 
-  printSuccess("Auth0 configuration with OAuth proxy saved to server/.env");
+  if (enableProxy) {
+    const webClientId = await promptRequired("Regular Web App Client ID");
+    const webClientSecret = await promptRequired("Regular Web App Client Secret");
+    const callbackUrl = await promptRequired("Callback URL (e.g., https://your-server.com/oauth/callback)");
 
-  console.log("\nConfiguration:");
-  printKeyValue("Provider", "Auth0");
-  printKeyValue("Domain", cleanDomain);
-  printKeyValue("Audience", audience);
-  printKeyValue("OAuth Proxy", "Enabled");
-  printKeyValue("Callback URL", callbackUrl);
-
-  printNextSteps([
-    "Restart the server: bun run dev:server",
-    "MCP clients can now connect with just the URL:",
-    `  { "url": "https://your-server/mcp" }`,
-    "Users will be redirected to Auth0 to authenticate",
-  ]);
-}
-
-/**
- * Setup Auth0 as OAuth provider (token validation only, no proxy)
- */
-async function setupAuth0(): Promise<void> {
-  printSection("Auth0 Setup Instructions (Token Validation Only)");
-
-  console.log("1. Create an Auth0 account at https://auth0.com (free tier available)\n");
-
-  console.log("2. Create an API (Applications > APIs > Create API):");
-  console.log("   - Name: Open CRM API");
-  console.log("   - Identifier: https://api.open-crm.example (or your domain)");
-  console.log("   - Signing Algorithm: RS256\n");
-
-  console.log("3. Enable scopes in the API settings:");
-  console.log("   - crm:read");
-  console.log("   - crm:write");
-  console.log("   - crm:admin\n");
-
-  console.log("4. For MCP client support, enable Dynamic Client Registration (DCR):");
-  console.log("   - Settings > Advanced > Enable OIDC Conformant");
-  console.log("   - Enable DCR in API settings\n");
-
-  console.log("5. Create an Application:");
-  console.log("   - For agents: Machine to Machine");
-  console.log("   - For users: Regular Web Application or SPA\n");
-
-  const ready = await prompt("Press Enter when you've completed the Auth0 setup...");
-
-  // Collect Auth0 configuration
-  printSection("Auth0 Configuration");
-
-  const domain = await promptRequired("Auth0 domain (e.g., your-tenant.auth0.com)");
-  const audience = await promptRequired("API Identifier/Audience (e.g., https://api.open-crm.example)");
-
-  // Validate domain format
-  const cleanDomain = domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    envVars.AUTH0_WEB_CLIENT_ID = webClientId;
+    envVars.AUTH0_WEB_CLIENT_SECRET = webClientSecret;
+    envVars.OAUTH_CALLBACK_URL = callbackUrl;
+  }
 
   // Write to .env
-  writeServerEnv({
-    MCP_AUTH_PROVIDER: "auth0",
-    AUTH0_DOMAIN: cleanDomain,
-    AUTH0_AUDIENCE: audience,
-  });
+  writeServerEnv(envVars);
 
   printSuccess("Auth0 configuration saved to server/.env");
 
@@ -183,13 +123,23 @@ async function setupAuth0(): Promise<void> {
   printKeyValue("Provider", "Auth0");
   printKeyValue("Domain", cleanDomain);
   printKeyValue("Audience", audience);
+  printKeyValue("OAuth Proxy", enableProxy ? "Enabled" : "Disabled");
 
-  printNextSteps([
-    "Restart the server: bun run dev:server",
-    "Test OAuth: The server will validate tokens from Auth0",
-    `Get an M2M token: curl -X POST https://${cleanDomain}/oauth/token ...`,
-    "See README.md for full M2M token request example",
-  ]);
+  if (enableProxy) {
+    printNextSteps([
+      "Restart the server: bun run dev:server",
+      "MCP clients can now connect with just the URL:",
+      `  { "url": "https://your-server/mcp" }`,
+      "Users will be redirected to Auth0 to authenticate",
+    ]);
+  } else {
+    printNextSteps([
+      "Restart the server: bun run dev:server",
+      "Server will validate tokens from Auth0",
+      `Get an M2M token: curl -X POST https://${cleanDomain}/oauth/token ...`,
+      "See README.md for full M2M token request example",
+    ]);
+  }
 }
 
 /**
