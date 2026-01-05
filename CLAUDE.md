@@ -21,6 +21,32 @@ bun run dev:mcp          # Runs HTTP MCP server on port 3000
 bun run build            # Deploys to Convex production
 ```
 
+## Remote MCP (Claude Code)
+
+To connect Claude Code to the HTTP MCP endpoint:
+
+```bash
+claude mcp add open-crm --transport http https://your-server.com/mcp
+```
+
+For OAuth-proxy mode behind hosting/proxies, set:
+
+```bash
+MCP_RESOURCE_URI=https://your-server.com/mcp
+NODE_ENV=production
+```
+
+This ensures `/.well-known/oauth-protected-resource` advertises the same public URL Claude Code is connecting to.
+
+## Production Convex deployment
+
+- Deploy Convex functions to prod:
+  ```bash
+  bunx convex deploy --yes
+  ```
+- Point the server at prod by setting `CONVEX_URL` in `file 'apps/open-crm/server/.env'`.
+- Generate a fresh API key in prod (API keys do not transfer across deployments).
+
 ## Quick Start (First-Time Setup)
 
 1. **Deploy Convex backend**:
@@ -534,4 +560,5 @@ When disabled, clients must be pre-registered or use a known client_id.
 ## Multi-Tenancy
 
 All data is scoped by `workspaceId`. Every table has workspace indexes. Users can belong to multiple workspaces with different roles (owner, admin, member, viewer).
+
 

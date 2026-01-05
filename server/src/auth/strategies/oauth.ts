@@ -207,23 +207,79 @@ export class OAuthStrategy implements AuthProvider {
     }
 
     // Upsert user with optional workspace auto-creation
-    const result = await this.convex.mutation(
-      api.functions.auth.mutations.upsertFromOAuthWithWorkspace,
-      {
-        authProvider: this.config.providerName,
-        authProviderId: claims.sub,
-        email: claims.email,
-        name: (claims.name as string) ?? undefined,
-        autoCreateWorkspace: this.config.autoCreateWorkspace,
-      }
-    );
+    try {
+      const result = await this.convex.mutation(
+        api.functions.auth.mutations.upsertFromOAuthWithWorkspace,
+        {
+          authProvider: this.config.providerName,
+          authProviderId: claims.sub,
+          email: claims.email,
+          name: (claims.name as string) ?? undefined,
+          autoCreateWorkspace: this.config.autoCreateWorkspace,
+        }
+      );
 
-    return {
-      userId: result.userId as Id<"users">,
-      workspaceId: result.workspaceId,
-      workspaceMemberId: result.workspaceMemberId,
-      isNewUser: result.isNewUser,
-      isNewWorkspace: result.isNewWorkspace,
-    };
+      return {
+        userId: result.userId as Id<"users">,
+        workspaceId: result.workspaceId,
+        workspaceMemberId: result.workspaceMemberId,
+        isNewUser: result.isNewUser,
+        isNewWorkspace: result.isNewWorkspace,
+      };
+    } catch (error) {
+      const anyErr: any = error as any;
+      const candidates: string[] = [
+        anyErr?.data?.message,
+        anyErr?.data?.errorMessage,
+        anyErr?.message,
+        String(error),
+      ].filter((x): x is string => typeof x === "string");
+
+      const joined = candidates.join("\n");
+
+      // If the email already exists under another auth provider (e.g. cli-setup),
+      // fall back to that user record instead of failing authentication.
+      if (joined.includes("already associated with another account")) {
+        const existingUser = await this.convex.query(
+          api.functions.auth.queries.getUserByEmail,
+          { email: claims.email }
+        );
+
+        if (!existingUser) {
+          throw new AuthError(
+            "User not found",
+            401,
+            this.name,
+            "invalid_token"
+          );
+        }
+
+        const workspaces = await this.convex.query(
+          api.functions.auth.queries.listUserWorkspaces,
+          { userId: existingUser._id as Id<"users"> }
+        );
+
+        const first = workspaces?.[0];
+        if (!first) {
+          return {
+            userId: existingUser._id as Id<"users">,
+            isNewUser: false,
+            isNewWorkspace: false,
+          };
+        }
+
+        return {
+          userId: existingUser._id as Id<"users">,
+          workspaceId: first._id,
+          workspaceMemberId: first.memberId,
+          isNewUser: false,
+          isNewWorkspace: false,
+        };
+      }
+
+      throw error;
+    }
   }
 }
+
+

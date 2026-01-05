@@ -50,11 +50,15 @@ export const upsertFromOAuth = mutation({
       .first();
 
     if (existingByEmail) {
-      // Link this auth provider to existing user
-      // For now, throw error - user should use existing provider
-      throw new Error(
-        `Email ${args.email} is already associated with another account`
-      );
+      // Link this provider to the existing user record
+      await ctx.db.patch(existingByEmail._id, {
+        authProvider: args.authProvider,
+        authProviderId: args.authProviderId,
+        lastLoginAt: now,
+        updatedAt: now,
+        name: args.name ?? existingByEmail.name,
+      });
+      return existingByEmail._id;
     }
 
     // Create new user
@@ -121,24 +125,30 @@ export const upsertFromOAuthWithWorkspace = mutation({
         .first();
 
       if (existingByEmail) {
-        throw new Error(
-          `Email ${args.email} is already associated with another account`
-        );
+        // Link this provider to the existing user record
+        await ctx.db.patch(existingByEmail._id, {
+          authProvider: args.authProvider,
+          authProviderId: args.authProviderId,
+          lastLoginAt: now,
+          updatedAt: now,
+          name: args.name ?? existingByEmail.name,
+        });
+        userId = existingByEmail._id;
+      } else {
+        // Create new user
+        userId = await ctx.db.insert("users", {
+          authProvider: args.authProvider,
+          authProviderId: args.authProviderId,
+          email: args.email,
+          name: args.name,
+          preferences: {},
+          status: "active",
+          lastLoginAt: now,
+          createdAt: now,
+          updatedAt: now,
+        });
+        isNewUser = true;
       }
-
-      // Create new user
-      userId = await ctx.db.insert("users", {
-        authProvider: args.authProvider,
-        authProviderId: args.authProviderId,
-        email: args.email,
-        name: args.name,
-        preferences: {},
-        status: "active",
-        lastLoginAt: now,
-        createdAt: now,
-        updatedAt: now,
-      });
-      isNewUser = true;
     }
 
     // Check if user has any workspace memberships
@@ -302,3 +312,4 @@ export const updateUserPreferences = mutation({
     return await ctx.db.get(args.userId);
   },
 });
+

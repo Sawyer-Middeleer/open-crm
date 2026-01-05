@@ -106,6 +106,11 @@ Run the OAuth setup:
 cd server && bun run setup:oauth
 ```
 
+> Important: for remote MCP behind a proxy (Cloudflare, tunnels, hosting platforms), set
+> `MCP_RESOURCE_URI` to the public HTTPS MCP URL your client will use (e.g. `https://open-crm.example.com/mcp`).
+> This value is returned by `/.well-known/oauth-protected-resource` and Claude Code will refuse to authenticate
+> if it doesn’t match.
+
 #### Auth0
 
 1. Create a tenant at [auth0.com](https://auth0.com)
@@ -186,19 +191,13 @@ See [CLAUDE.md](./CLAUDE.md) for detailed authentication setup instructions.
 
 ### Remote MCP with OAuth Proxy
 
-If you've configured the OAuth proxy (see Step 5, Option A), MCP clients can connect with just the URL:
+If you've configured the OAuth proxy (see Step 5), add the server via Claude Code CLI:
 
-```json
-{
-  "mcpServers": {
-    "open-crm": {
-      "url": "https://your-server.com/mcp"
-    }
-  }
-}
+```bash
+claude mcp add open-crm --transport http https://your-server.com/mcp
 ```
 
-When you click "Connect" and "Authenticate", you'll be redirected to Auth0 to log in. Your workspace is created automatically on first login.
+Then authenticate in Claude Code via `/mcp` → Authenticate.
 
 ### Option 2: Local Development (stdio)
 
@@ -419,6 +418,24 @@ See [CLAUDE.md](./CLAUDE.md) for detailed architecture documentation including:
 - Multi-tenancy structure
 - Environment variables
 
+## Production (Convex)
+
+Convex has separate **dev** and **prod** deployments.
+
+- Local development typically uses the URL written to `file 'apps/open-crm/.env.local'` by `bunx convex dev`.
+- A hosted/production server should point at your **prod** Convex deployment.
+
+To deploy Convex functions to prod:
+
+```bash
+bunx convex deploy --yes
+```
+
+To switch the server to prod, set `CONVEX_URL` in `file 'apps/open-crm/server/.env'` to your prod URL (e.g. `https://sensible-vole-557.convex.cloud`) and restart the server.
+
+Note: API keys are stored in Convex, so when you switch deployments you must generate a new API key in that deployment.
+
 ## License
 
 MIT
+

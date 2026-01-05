@@ -112,6 +112,24 @@ async function setupAuth0(): Promise<void> {
     envVars.AUTH0_WEB_CLIENT_ID = webClientId;
     envVars.AUTH0_WEB_CLIENT_SECRET = webClientSecret;
     envVars.OAUTH_CALLBACK_URL = callbackUrl;
+
+    // Public URL used in OAuth protected resource metadata (RFC 9728).
+    // This MUST match the URL your MCP client uses (e.g. https://open-crm.example.com/mcp).
+    const defaultOrigin = (() => {
+      try {
+        return new URL(callbackUrl).origin;
+      } catch {
+        return undefined;
+      }
+    })();
+    const publicOrigin = await prompt(
+      "Public server origin (used for MCP_RESOURCE_URI)",
+      defaultOrigin
+    );
+    if (publicOrigin) {
+      envVars.MCP_RESOURCE_URI = `${publicOrigin.replace(/\/$/, "")}/mcp`;
+      envVars.NODE_ENV = "production";
+    }
   }
 
   // Write to .env
@@ -129,7 +147,7 @@ async function setupAuth0(): Promise<void> {
     printNextSteps([
       "Restart the server: bun run dev:server",
       "MCP clients can now connect with just the URL:",
-      `  { "url": "https://your-server/mcp" }`,
+      `  { \"url\": \"${envVars.MCP_RESOURCE_URI || "https://your-server/mcp"}\" }`,
       "Users will be redirected to Auth0 to authenticate",
     ]);
   } else {
@@ -197,3 +215,4 @@ async function setupCustomOidc(): Promise<void> {
     "Configure your IdP to issue tokens with crm:read, crm:write, or crm:admin scopes",
   ]);
 }
+

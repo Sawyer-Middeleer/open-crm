@@ -365,7 +365,17 @@ export async function startHttpServer(): Promise<void> {
           }
 
           // Handle the MCP request
-          const response = await transport.handleRequest(request, {
+          const requestForTransport = (() => {
+            const accept = request.headers.get("accept") || "";
+            if (accept.includes("text/event-stream") && accept.includes("application/json")) {
+              return request;
+            }
+            const h = new Headers(request.headers);
+            h.set("accept", "application/json, text/event-stream");
+            return new Request(request, { headers: h });
+          })();
+
+          const response = await transport.handleRequest(requestForTransport, {
             authInfo: {
               // Map our auth context to MCP's AuthInfo
               // The MCP SDK passes this to message handlers via extra.authInfo
@@ -383,6 +393,19 @@ export async function startHttpServer(): Promise<void> {
               },
             },
           });
+
+          // If this request initialized a new session, persist it now.
+          // The transport may only know the sessionId after handling the first request.
+          const responseSessionId =
+            response.headers.get("mcp-session-id") ??
+            response.headers.get("Mcp-Session-Id");
+          if (responseSessionId && !sessions.has(responseSessionId)) {
+            sessions.set(responseSessionId, {
+              auth: authContext,
+              transport,
+              lastActivityAt: Date.now(),
+            });
+          }
 
           // Add CORS headers to response
           const origin = request.headers.get("origin");
@@ -457,3 +480,5 @@ export async function startHttpServer(): Promise<void> {
 export function getAuthContext(sessionId: string): AuthContext | undefined {
   return sessions.get(sessionId)?.auth;
 }
+
+
