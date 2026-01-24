@@ -41,6 +41,7 @@ export const list = query({
     objectTypeSlug: v.string(),
     paginationOpts: paginationOptsValidator,
     includeArchived: v.optional(v.boolean()),
+    fields: v.optional(v.array(v.string())),
     actorId: v.id("workspaceMembers"),
   },
   handler: async (ctx, args) => {
@@ -73,8 +74,13 @@ export const list = query({
 
     const results = await query.order("desc").paginate(args.paginationOpts);
 
+    // Apply field projection if specified
+    const page = args.fields
+      ? results.page.map((record) => projectFields(record, args.fields))
+      : results.page;
+
     return {
-      page: results.page,
+      page,
       isDone: results.isDone,
       continueCursor: results.continueCursor,
       objectType: {
@@ -207,6 +213,30 @@ type RecordDoc = {
   updatedAt: number;
 };
 
+// Helper to project only specific fields from a record's data
+function projectFields<T extends { data: unknown }>(
+  record: T,
+  fields?: string[]
+): T {
+  if (!fields || fields.length === 0) {
+    return record;
+  }
+
+  const data = record.data as Record<string, unknown>;
+  const projectedData: Record<string, unknown> = {};
+
+  for (const field of fields) {
+    if (field in data) {
+      projectedData[field] = data[field];
+    }
+  }
+
+  return {
+    ...record,
+    data: projectedData,
+  };
+}
+
 export const search = query({
   args: {
     workspaceId: v.id("workspaces"),
@@ -224,6 +254,7 @@ export const search = query({
     sortBy: v.optional(v.string()),
     sortOrder: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
     includeArchived: v.optional(v.boolean()),
+    fields: v.optional(v.array(v.string())),
     paginationOpts: paginationOptsValidator,
     actorId: v.id("workspaceMembers"),
   },
@@ -332,8 +363,11 @@ export const search = query({
       results.sort((a, b) => b.createdAt - a.createdAt);
     }
 
-    // 4. Return paginated results
-    const page = results.slice(0, pageSize);
+    // 4. Return paginated results with optional field projection
+    const slicedResults = results.slice(0, pageSize);
+    const page = args.fields
+      ? slicedResults.map((record) => projectFields(record, args.fields))
+      : slicedResults;
     const truncated = scanned >= MAX_SCAN_LIMIT && !isDone;
 
     return {

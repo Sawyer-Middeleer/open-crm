@@ -199,6 +199,8 @@ Record operations (14):
 - `records.bulkUpdate` - Update multiple records with same values
 - `records.merge` - Merge source records into target
 
+**Field projection**: Both `records.list` and `records.search` support a `fields` parameter (array of attribute slugs) to return only specific fields in the `data` object. This reduces response size and context window usage. System fields (`_id`, `displayName`, etc.) are always included.
+
 Schema management (4):
 - `schema.objectTypes.list`, `schema.objectTypes.get`, `schema.objectTypes.create`
 - `schema.attributes.create`

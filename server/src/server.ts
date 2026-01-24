@@ -175,19 +175,21 @@ export function createServer() {
 
   server.tool(
     "records.list",
-    "List records of a specific object type with cursor-based pagination",
+    "List records of a specific object type with cursor-based pagination. Use the 'fields' parameter to return only specific attributes, reducing response size.",
     {
       objectType: z.string().describe("Object type slug"),
       numItems: z.number().optional().describe("Number of records per page (default: 50)"),
       cursor: z.string().nullable().optional().describe("Pagination cursor from previous response"),
       includeArchived: z.boolean().optional().describe("Include archived records (default: false)"),
+      fields: z.array(z.string()).optional().describe("Attribute slugs to include in response. If omitted, all fields are returned. System fields (_id, displayName, etc.) are always included."),
     },
-    async ({ objectType, numItems, cursor, includeArchived }, extra) => {
+    async ({ objectType, numItems, cursor, includeArchived, fields }, extra) => {
       const auth = getAuthContext(extra, "records.list");
       const result = await convex.query(api.functions.records.queries.list, {
         workspaceId: auth.workspaceId,
         objectTypeSlug: objectType,
         includeArchived,
+        fields,
         paginationOpts: {
           numItems: numItems ?? 50,
           cursor: cursor ?? null,
@@ -333,7 +335,7 @@ By default: list memberships are transferred, inbound references are updated, an
 
   server.tool(
     "records.search",
-    "Search and filter records by field values. Supports filtering by any attribute with operators like equals, contains, greaterThan, etc. Uses cursor-based pagination with safety limits.",
+    "Search and filter records by field values. Supports filtering by any attribute with operators like equals, contains, greaterThan, etc. Use the 'fields' parameter to return only specific attributes, reducing response size. Uses cursor-based pagination with safety limits.",
     {
       objectType: z.string().optional().describe("Object type slug to filter by (e.g., 'people', 'deals')"),
       filters: z
@@ -365,10 +367,11 @@ By default: list memberships are transferred, inbound references are updated, an
       sortBy: z.string().optional().describe("Attribute slug to sort by, or '_createdAt'"),
       sortOrder: z.enum(["asc", "desc"]).optional().describe("Sort order (default: asc)"),
       includeArchived: z.boolean().optional().describe("Include archived records (default: false)"),
+      fields: z.array(z.string()).optional().describe("Attribute slugs to include in response. If omitted, all fields are returned. System fields (_id, displayName, etc.) are always included."),
       numItems: z.number().optional().describe("Number of records per page (default: 50)"),
       cursor: z.string().nullable().optional().describe("Pagination cursor from previous response"),
     },
-    async ({ objectType, filters, query, sortBy, sortOrder, includeArchived, numItems, cursor }, extra) => {
+    async ({ objectType, filters, query, sortBy, sortOrder, includeArchived, fields, numItems, cursor }, extra) => {
       const auth = getAuthContext(extra, "records.search");
       const result = await convex.query(api.functions.records.queries.search, {
         workspaceId: auth.workspaceId,
@@ -378,6 +381,7 @@ By default: list memberships are transferred, inbound references are updated, an
         sortBy,
         sortOrder,
         includeArchived,
+        fields,
         paginationOpts: {
           numItems: numItems ?? 50,
           cursor: cursor ?? null,

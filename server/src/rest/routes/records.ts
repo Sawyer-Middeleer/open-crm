@@ -121,6 +121,7 @@ export function createRecordsRoutes(deps: RestApiDependencies) {
       query: PaginationQuerySchema.extend({
         objectType: z.string().describe("Object type slug"),
         includeArchived: z.string().optional().transform((v) => v === "true"),
+        fields: z.string().optional().describe("Comma-separated list of attribute slugs to include in response"),
       }),
     },
     responses: {
@@ -136,10 +137,14 @@ export function createRecordsRoutes(deps: RestApiDependencies) {
     const auth = c.get("auth");
     const query = c.req.valid("query");
 
+    // Parse comma-separated fields into array
+    const fields = query.fields ? query.fields.split(",").map((f) => f.trim()).filter(Boolean) : undefined;
+
     const result = await convex.query(api.functions.records.queries.list, {
       workspaceId: auth.workspaceId,
       objectTypeSlug: query.objectType,
       includeArchived: query.includeArchived,
+      fields,
       paginationOpts: {
         numItems: query.numItems,
         cursor: query.cursor ?? null,
@@ -307,6 +312,7 @@ export function createRecordsRoutes(deps: RestApiDependencies) {
               sortBy: z.string().optional().describe("Attribute slug to sort by, or '_createdAt'"),
               sortOrder: z.enum(["asc", "desc"]).optional(),
               includeArchived: z.boolean().optional(),
+              fields: z.array(z.string()).optional().describe("Attribute slugs to include in response. If omitted, all fields are returned."),
               cursor: z.string().optional(),
               numItems: z.number().min(1).max(100).optional(),
             }),
@@ -332,6 +338,7 @@ export function createRecordsRoutes(deps: RestApiDependencies) {
       sortBy: body.sortBy,
       sortOrder: body.sortOrder,
       includeArchived: body.includeArchived,
+      fields: body.fields,
       paginationOpts: {
         numItems: body.numItems ?? 50,
         cursor: body.cursor ?? null,
